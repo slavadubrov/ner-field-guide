@@ -1,4 +1,5 @@
 """GLiNER zero-shot NER in 10 lines."""
+
 from gliner import GLiNER
 
 model = GLiNER.from_pretrained("urchade/gliner_medium-v2.1")
