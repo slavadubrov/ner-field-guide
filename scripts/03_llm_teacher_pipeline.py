@@ -1,4 +1,4 @@
-"""LLM-as-teacher pipeline: label text with GPT-4o (or GLiNER fallback)."""
+"""LLM-as-teacher pipeline using a configurable OpenAI model or GLiNER fallback."""
 
 from __future__ import annotations
 
@@ -22,6 +22,7 @@ UNLABELED_SNIPPETS = [
 ]
 ARTIFACTS = Path("artifacts")
 OUTPUT_PATH = ARTIFACTS / "teacher_dataset.jsonl"
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.4-mini")
 
 client = OpenAI() if os.getenv("OPENAI_API_KEY") else None
 _fallback_model: GLiNER | None = None
@@ -42,7 +43,7 @@ def label_with_llm(text: str) -> list[dict]:
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model=OPENAI_MODEL,
             response_format={"type": "json_object"},
             messages=[
                 {
@@ -81,4 +82,9 @@ def save_dataset(examples: Iterable[dict]) -> None:
 if __name__ == "__main__":
     dataset = build_dataset(UNLABELED_SNIPPETS)
     save_dataset(dataset)
-    print(f"Wrote {len(dataset)} labeled examples to {OUTPUT_PATH}")
+    if client is None:
+        print(f"Wrote {len(dataset)} labeled examples to {OUTPUT_PATH}")
+    else:
+        print(
+            f"Wrote {len(dataset)} labeled examples to {OUTPUT_PATH} using {OPENAI_MODEL}"
+        )

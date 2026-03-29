@@ -25,7 +25,7 @@ REPORT_JSON = ARTIFACTS_DIR / "benchmark_report.json"
 REPORT_MD = ARTIFACTS_DIR / "benchmark_report.md"
 LABELS = ["person", "organization", "date", "money", "product", "event"]
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.4-mini")
 
 DATASET = [
     {
@@ -167,7 +167,7 @@ def benchmark_gpt_teacher(client: OpenAI) -> BenchmarkResult:
                     "role": "system",
                     "content": (
                         "Extract entities and return json with "
-                        "{\"entities\": [{\"text\": \"...\", \"type\": \"...\"}]}. "
+                        '{"entities": [{"text": "...", "type": "..."}]}. '
                         f"Allowed types: {', '.join(LABELS)}."
                     ),
                 },
@@ -250,7 +250,9 @@ def render_table(results: list[BenchmarkResult]) -> str:
     rows = [
         [
             result.name,
-            f"{result.average_latency_ms:.1f}" if result.average_latency_ms is not None else "n/a",
+            f"{result.average_latency_ms:.1f}"
+            if result.average_latency_ms is not None
+            else "n/a",
             f"{result.metrics.precision:.2f}" if result.metrics else "n/a",
             f"{result.metrics.recall:.2f}" if result.metrics else "n/a",
             f"{result.metrics.f1:.2f}" if result.metrics else "n/a",
@@ -263,7 +265,9 @@ def render_table(results: list[BenchmarkResult]) -> str:
         max(len(str(cell)) for cell in [header] + [row[idx] for row in rows])
         for idx, header in enumerate(headers)
     ]
-    header_line = " | ".join(header.ljust(widths[idx]) for idx, header in enumerate(headers))
+    header_line = " | ".join(
+        header.ljust(widths[idx]) for idx, header in enumerate(headers)
+    )
     separator = "-+-".join("-" * width for width in widths)
     body = [
         " | ".join(str(cell).ljust(widths[idx]) for idx, cell in enumerate(row))
@@ -281,7 +285,9 @@ def write_report(results: list[BenchmarkResult], footprint: list[dict]) -> None:
             {
                 "name": result.name,
                 "average_latency_ms": round(result.average_latency_ms or 0.0, 1),
-                "precision": round(result.metrics.precision, 3) if result.metrics else None,
+                "precision": round(result.metrics.precision, 3)
+                if result.metrics
+                else None,
                 "recall": round(result.metrics.recall, 3) if result.metrics else None,
                 "f1": round(result.metrics.f1, 3) if result.metrics else None,
                 "notes": result.notes,
@@ -309,7 +315,9 @@ def write_report(results: list[BenchmarkResult], footprint: list[dict]) -> None:
             + " | ".join(
                 [
                     result.name,
-                    f"{result.average_latency_ms:.1f}" if result.average_latency_ms is not None else "n/a",
+                    f"{result.average_latency_ms:.1f}"
+                    if result.average_latency_ms is not None
+                    else "n/a",
                     f"{result.metrics.precision:.2f}" if result.metrics else "n/a",
                     f"{result.metrics.recall:.2f}" if result.metrics else "n/a",
                     f"{result.metrics.f1:.2f}" if result.metrics else "n/a",

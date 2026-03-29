@@ -12,6 +12,7 @@ cp .env.example .env  # Required for GPT-4o-powered scripts
 
 - Use Python 3.11+ and [uv](https://github.com/astral-sh/uv) for environment management.
 - Fill `OPENAI_API_KEY` in `.env` with an API key from [platform.openai.com/account/api-keys](https://platform.openai.com/account/api-keys).
+- Set `OPENAI_MODEL` if you want to override the default LLM benchmark target. The repo defaults to `gpt-5.4-mini` because it is a better fit for practical latency/cost comparisons than the older `gpt-4o` default.
 - If you proxy requests (Azure/OpenAI-compatible gateways) update `OPENAI_BASE_URL` in `.env`.
 - Scripts automatically load `.env` via `python-dotenv`.
 
@@ -21,9 +22,9 @@ cp .env.example .env  # Required for GPT-4o-powered scripts
 | --- | --- | --- | --- |
 | 01 – GLiNER quickstart | `uv run python scripts/01_gliner_quickstart.py` | Minimal zero-shot inference with GLiNER | Purely local, no API keys needed. |
 | 02 – ONNX export & INT8 | `uv run python scripts/02_onnx_export.py` | Exports GLiNER to FP32 ONNX and quantizes to INT8 | Outputs live under `artifacts/`. |
-| 03 – LLM teacher pipeline | `uv run python scripts/03_llm_teacher_pipeline.py` | Labels unlabeled snippets with GPT-4o (JSON) and produces `teacher_dataset.jsonl` | Falls back to GLiNER-generated pseudo-labels if no API key. |
-| 04 – Benchmark | `uv run python scripts/04_benchmark.py` | Side-by-side report comparing GLiNER, GPT teacher labeling, and Instructor extraction | Writes Markdown + JSON reports to `artifacts/`. |
-| 05 – Structured extraction | `uv run python scripts/05_structured_extraction.py` | Pydantic-typed extraction via Instructor + GPT-4o | Uses GLiNER fallback if GPT-4o unavailable. |
+| 03 – LLM teacher pipeline | `uv run python scripts/03_llm_teacher_pipeline.py` | Labels unlabeled snippets with the configured OpenAI model (JSON) and produces `teacher_dataset.jsonl` | Defaults to `gpt-5.4-mini`; falls back to GLiNER if no API key. |
+| 04 – Benchmark | `uv run python scripts/04_benchmark.py` | Side-by-side report comparing GLiNER, OpenAI teacher labeling, and Instructor extraction | Uses `OPENAI_MODEL` and writes Markdown + JSON reports to `artifacts/`. |
+| 05 – Structured extraction | `uv run python scripts/05_structured_extraction.py` | Pydantic-typed extraction via Instructor + the configured OpenAI model | Defaults to `gpt-5.4-mini`; uses GLiNER fallback if no API key. |
 
 > All artifacts (ONNX files, labeled datasets, etc.) are written to the `artifacts/` directory which is created on demand.
 
@@ -50,14 +51,14 @@ Demonstrates how to load `urchade/gliner_medium-v2.1` and predict a few simple e
 
 ### 03 – LLM teacher pipeline
 
-- Reads three unlabeled snippets and asks GPT-4o to return a JSON payload with entities restricted to `["person", "organization", "date", "money", "product"]`.
+- Reads three unlabeled snippets and asks the configured OpenAI model to return a JSON payload with entities restricted to `["person", "organization", "date", "money", "product"]`.
 - Writes the labeled dataset to `artifacts/teacher_dataset.jsonl`, ready for GLiNER fine-tuning.
 - When `OPENAI_API_KEY` is missing, it transparently uses GLiNER itself as a pseudo-teacher so the rest of the pipeline still runs (a console notice will tell you which path executed).
 
 ### 04 – Benchmark
 
 - Uses a tiny in-repo dataset to compute precision/recall/F1.
-- Benchmarks three approaches side by side: local GLiNER inference, GPT teacher-style JSON labeling, and Instructor schema-constrained extraction.
+- Benchmarks three approaches side by side: local GLiNER inference, OpenAI teacher-style JSON labeling, and Instructor schema-constrained extraction.
 - Includes deployment-footprint numbers for the exported FP32 and INT8 ONNX artifacts to connect model quality with production packaging.
 - Writes `artifacts/benchmark_report.md` and `artifacts/benchmark_report.json`, so the repo now has a persistent comparison artifact instead of only transient console logs.
 

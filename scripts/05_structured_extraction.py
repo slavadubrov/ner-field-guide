@@ -1,4 +1,4 @@
-"""Structured extraction with Instructor (GPT-4o) and GLiNER fallback."""
+"""Structured extraction with Instructor and a configurable OpenAI model."""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ load_dotenv()
 MODEL_ID = "urchade/gliner_medium-v2.1"
 LABELS = ["person", "organization", "date", "location"]
 OPENAI_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.4-mini")
 _fallback_model: GLiNER | None = None
 
 
@@ -33,7 +34,7 @@ def run_with_instructor(text: str) -> DocumentNER:
 
     client = from_openai(OpenAI(api_key=OPENAI_KEY))
     return client.chat.completions.create(
-        model="gpt-4o",
+        model=OPENAI_MODEL,
         messages=[{"role": "user", "content": f"Extract entities from: {text}"}],
         response_model=DocumentNER,
     )
@@ -57,6 +58,7 @@ def main() -> None:
         result = fallback_with_gliner(text)
     else:
         result = run_with_instructor(text)
+        print(f"Using {OPENAI_MODEL} for structured extraction.")
     print(result.model_dump())
 
 
