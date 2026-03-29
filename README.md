@@ -27,6 +27,14 @@ cp .env.example .env  # Required for GPT-4o-powered scripts
 
 > All artifacts (ONNX files, labeled datasets, etc.) are written to the `artifacts/` directory which is created on demand.
 
+Or run everything in one go:
+
+```bash
+uv run python -m scripts.run_all
+```
+
+Add `--ignore-errors` to keep going even if one demo fails.
+
 ## 3. Script details
 
 ### 01 – GLiNER quickstart

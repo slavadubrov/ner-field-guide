@@ -47,7 +47,11 @@ def label_with_llm(text: str) -> list[dict]:
             messages=[
                 {
                     "role": "system",
-                    "content": f"Extract entities. Allowed types: {', '.join(ENTITY_TYPES)}.",
+                    "content": (
+                        "Extract entities and respond in json with the shape "
+                        '{"entities": [{"text": "...", "type": "..."}]}. '
+                        f"Allowed types: {', '.join(ENTITY_TYPES)}."
+                    ),
                 },
                 {"role": "user", "content": text},
             ],

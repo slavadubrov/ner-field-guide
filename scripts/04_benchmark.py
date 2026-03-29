@@ -53,6 +53,24 @@ class Metrics:
     f1: float
 
 
+def coerce_entity(entity: dict) -> dict | None:
+    text = (
+        entity.get("text")
+        or entity.get("entity")
+        or entity.get("span")
+        or entity.get("mention")
+    )
+    label = (
+        entity.get("label")
+        or entity.get("type")
+        or entity.get("category")
+        or entity.get("class")
+    )
+    if not text or not label:
+        return None
+    return {"text": text, "label": label}
+
+
 def normalize(entity: dict) -> tuple[str, str]:
     return entity["text"].strip().lower(), entity["label"].strip().lower()
 
@@ -105,18 +123,21 @@ def benchmark_gpt() -> None:
                 messages=[
                     {
                         "role": "system",
-                        "content": json.dumps(
-                            {
-                                "instruction": "Return JSON with an 'entities' list",
-                                "labels": LABELS,
-                            }
+                        "content": (
+                            "Return json with an 'entities' list using only these labels: "
+                            + ", ".join(LABELS)
                         ),
                     },
                     {"role": "user", "content": example["text"]},
                 ],
             )
             payload = json.loads(response.choices[0].message.content)
-            preds.append(payload.get("entities", []))
+            cleaned = [
+                coerced
+                for ent in payload.get("entities", [])
+                if (coerced := coerce_entity(ent))
+            ]
+            preds.append(cleaned)
         except APIError as exc:
             print(f"OpenAI error: {exc}")
             preds.append([])
