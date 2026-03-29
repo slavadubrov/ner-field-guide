@@ -22,7 +22,7 @@ cp .env.example .env  # Required for GPT-4o-powered scripts
 | 01 – GLiNER quickstart | `uv run python scripts/01_gliner_quickstart.py` | Minimal zero-shot inference with GLiNER | Purely local, no API keys needed. |
 | 02 – ONNX export & INT8 | `uv run python scripts/02_onnx_export.py` | Exports GLiNER to FP32 ONNX and quantizes to INT8 | Outputs live under `artifacts/`. |
 | 03 – LLM teacher pipeline | `uv run python scripts/03_llm_teacher_pipeline.py` | Labels unlabeled snippets with GPT-4o (JSON) and produces `teacher_dataset.jsonl` | Falls back to GLiNER-generated pseudo-labels if no API key. |
-| 04 – Benchmark | `uv run python scripts/04_benchmark.py` | Latency + F1 comparison between GLiNER and GPT-4o | GPT portion runs only when `OPENAI_API_KEY` is set. |
+| 04 – Benchmark | `uv run python scripts/04_benchmark.py` | Side-by-side report comparing GLiNER, GPT teacher labeling, and Instructor extraction | Writes Markdown + JSON reports to `artifacts/`. |
 | 05 – Structured extraction | `uv run python scripts/05_structured_extraction.py` | Pydantic-typed extraction via Instructor + GPT-4o | Uses GLiNER fallback if GPT-4o unavailable. |
 
 > All artifacts (ONNX files, labeled datasets, etc.) are written to the `artifacts/` directory which is created on demand.
@@ -57,8 +57,9 @@ Demonstrates how to load `urchade/gliner_medium-v2.1` and predict a few simple e
 ### 04 – Benchmark
 
 - Uses a tiny in-repo dataset to compute precision/recall/F1.
-- Always benchmarks GLiNER locally and reports average latency per example.
-- If GPT-4o credentials are configured, the same dataset is sent to GPT-4o to collect comparable metrics. Otherwise the script skips the cloud benchmark with a clear message.
+- Benchmarks three approaches side by side: local GLiNER inference, GPT teacher-style JSON labeling, and Instructor schema-constrained extraction.
+- Includes deployment-footprint numbers for the exported FP32 and INT8 ONNX artifacts to connect model quality with production packaging.
+- Writes `artifacts/benchmark_report.md` and `artifacts/benchmark_report.json`, so the repo now has a persistent comparison artifact instead of only transient console logs.
 
 ### 05 – Structured extraction
 
