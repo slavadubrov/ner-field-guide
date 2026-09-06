@@ -2,3 +2,7 @@
 artifacts/
 .env
 __pycache__/
+.ruff_cache/
+.uv-cache/
+dist/
+*.egg-info/
