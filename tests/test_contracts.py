@@ -264,8 +264,6 @@ class Streaming(unittest.TestCase):
         self.assertEqual(len(model.cleared), 1)
 
 
-
-
 @unittest.skipUnless(
     __import__("os").getenv("NER_LOCAL_CHECKS") == "1",
     "opt-in cached model integration",
