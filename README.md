@@ -195,7 +195,7 @@ micro recall is more than 0.02 below PyTorch.
 
 INT8 uses dynamic quantization of `MatMul`, `Gemm`, and the embedding `Gather`, and
 keeps the twelve DeBERTa FFN down-projections (`layer.N/output/dense`) in FP32.
-Quantizing those layers makes the model return no entities. Example output on the
+Quantizing only those twelve layers already makes the model return no entities. Example output on the
 32 test sentences (Apple M5 Max, ONNX Runtime 1.24.4):
 
 ```text

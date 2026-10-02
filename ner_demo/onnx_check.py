@@ -92,8 +92,9 @@ def sort_graph(graph):
 def ffn_output_nodes(graph):
     """DeBERTa FFN down-projections (`layer.N/output/dense`), kept in FP32.
 
-    Their GELU inputs have large outliers. Per-tensor dynamic INT8 activation
-    scales then zero most values, and the quantized model returns no entities.
+    Measured on gliner_medium-v2.1: dynamically quantizing only these twelve
+    layers pushes every logit below zero, so the model returns no entities.
+    All other MatMul/Gemm/Gather layers quantize without that loss.
     """
     return [
         node.name
