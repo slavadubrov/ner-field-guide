@@ -78,3 +78,22 @@ class ONNXContracts(unittest.TestCase):
             (path / "model.onnx").write_bytes(model.SerializeToString())
             with self.assertRaisesRegex(ValueError, "external weights"):
                 validate_package(path)
+
+    def test_int8_keeps_only_ffn_down_projections_in_fp32(self):
+        from onnx import helper as h
+
+        from ner_demo.onnx_check import ffn_output_nodes
+
+        prefix = "/core/token_rep_layer/bert_layer/model/encoder/layer.3"
+        names = [
+            f"{prefix}/output/dense/MatMul",
+            f"{prefix}/attention/output/dense/MatMul",
+            f"{prefix}/intermediate/dense/MatMul",
+        ]
+        graph = h.make_graph(
+            [h.make_node("MatMul", ["a", "b"], [n], name=n) for n in names],
+            "g",
+            [],
+            [],
+        )
+        self.assertEqual(ffn_output_nodes(graph), names[:1])

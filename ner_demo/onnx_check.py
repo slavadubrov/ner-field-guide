@@ -4,6 +4,7 @@ import argparse
 import importlib.metadata
 import json
 import platform
+import re
 import shutil
 import time
 from pathlib import Path
@@ -11,6 +12,9 @@ from pathlib import Path
 from ner_demo.core import LABELS, digest, smoke_documents
 from ner_demo.evaluate import evaluate
 from ner_demo.models import PINS, gliner_predict, load_gliner
+
+# INT8 may lose at most this much micro recall against PyTorch (one span in 50).
+INT8_MAX_RECALL_DROP = 0.02
 
 
 def validate_package(path):
@@ -42,7 +46,11 @@ def validate_package(path):
 
 
 def sort_graph(graph):
-    """Include subgraph captures when ordering nodes (ORT 1.24 quantizer omits them)."""
+    """Include subgraph captures when ordering nodes.
+
+    The pinned ORT quantizer can place a node before values captured by its `If`
+    subgraphs. Reordering fixes the dependency order without changing the math.
+    """
     from graphlib import TopologicalSorter
 
     from onnx import AttributeProto
@@ -81,15 +89,32 @@ def sort_graph(graph):
     )
 
 
+def ffn_output_nodes(graph):
+    """DeBERTa FFN down-projections (`layer.N/output/dense`), kept in FP32.
+
+    Measured on gliner_medium-v2.1: dynamically quantizing only these twelve
+    layers pushes every logit below zero, so the model returns no entities.
+    All other MatMul/Gemm/Gather layers quantize without that loss.
+    """
+    return [
+        node.name
+        for node in graph.node
+        if node.op_type == "MatMul"
+        and re.search(r"/layer\.\d+/output/dense/", node.name)
+    ]
+
+
 def quantize_package(fp32, int8):
     import onnx
     from onnxruntime.quantization import QuantType, quantize_dynamic
 
+    source = onnx.load(str(fp32 / "model.onnx"), load_external_data=False)
     quantize_dynamic(
         str(fp32 / "model.onnx"),
         str(int8 / "model.onnx"),
         weight_type=QuantType.QInt8,
-        op_types_to_quantize=["MatMul", "Gemm"],
+        op_types_to_quantize=["MatMul", "Gemm", "Gather"],
+        nodes_to_exclude=ffn_output_nodes(source.graph),
     )
     graph = onnx.load(str(int8 / "model.onnx"))
     sort_graph(graph.graph)
@@ -167,6 +192,10 @@ def main():
                 ):
                     differences.add(row["document_id"])
         parity[name] = sorted(differences)
+    recall = {
+        name: min(run["metrics"]["micro"]["recall"] for run in result["runs"])
+        for name, result in results.items()
+    }
     report = dict(
         model=PINS["gliner"],
         dataset=dataset_manifest,
@@ -187,14 +216,25 @@ def main():
             {p.name: p.read_text() for p in Path(__file__).parent.glob("*.py")}
         ),
         differing_documents=parity,
+        micro_recall=recall,
+        int8_max_recall_drop=INT8_MAX_RECALL_DROP,
         results=results,
     )
     (args.output / "comparison.json").write_text(json.dumps(report, indent=2) + "\n")
-    print(json.dumps(dict(package_bytes=sizes, differing_documents=parity)))
-    if any(parity.values()):
-        raise SystemExit(
-            "ONNX differences detected; inspect comparison.json per-label metrics"
+    print(
+        json.dumps(
+            dict(
+                package_bytes=sizes,
+                micro_recall=recall,
+                differing_documents={k: len(v) for k, v in parity.items()},
+            )
         )
+    )
+    # FP32 must reproduce PyTorch exactly; INT8 may differ within the recall budget.
+    if parity["fp32"]:
+        raise SystemExit("FP32 ONNX spans differ from PyTorch; see comparison.json")
+    if recall["int8"] < recall["pytorch"] - INT8_MAX_RECALL_DROP:
+        raise SystemExit("INT8 recall loss exceeds budget; see comparison.json")
 
 
 if __name__ == "__main__":

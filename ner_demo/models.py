@@ -71,9 +71,12 @@ def load_gliner(name="gliner", download=False, device="cpu"):
         else AutoTokenizer.from_pretrained(backbone[0], **kwargs)
     )
     config = json.loads((Path(path) / "gliner_config.json").read_text())
-    config["encoder_config"] = AutoConfig.from_pretrained(
-        backbone[0], **kwargs
-    ).to_dict()
+    encoder = AutoConfig.from_pretrained(backbone[0], **kwargs).to_dict()
+    # Checkpoints that saved a resized embedding (gliner_small-v2.5: 128003 rows)
+    # must keep that size, or the backbone default (128100) fails to load.
+    if config.get("vocab_size", -1) > 0:
+        encoder["vocab_size"] = config["vocab_size"]
+    config["encoder_config"] = encoder
     with tempfile.TemporaryDirectory(prefix="ner-gliner-") as temporary:
         staged = Path(temporary)
         tokenizer.save_pretrained(staged)
