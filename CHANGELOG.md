@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.0 - unreleased
+## 0.3.0 - 2026-10-22
 
 First tagged release. Earlier work is in the git history. `pyproject.toml` on
 `main` said 0.2.0, but 0.2.0 was never tagged or published, so this release
@@ -118,12 +118,13 @@ Run on 2026-10-22 on an Apple M4 (10 logical CPUs, macOS 27.2), CPU only.
 - Bi-encoder label cache: p50 11.9 ms cached vs 16.3 ms per-call on the 2,000
   sentences, identical predictions; on `gliner` 0.2.28 the two paths took the
   same time.
-
-- Every README command was then run verbatim in a fresh clone of the release
-  commit `a85ffa3`: offline example, cached quickstart, data import, sweep, both
+- Every README command was then run verbatim in a fresh clone of commit
+  `a85ffa3`: offline example, cached quickstart, data import, sweep, both
   comparisons, ONNX check, streaming demo, and both test suites. Counts,
-  selected thresholds, and intervals matched the earlier run exactly.
-
+  selected thresholds, and intervals matched the earlier run exactly. Later
+  commits changed only the paid LLM baseline (prompt, scoring of its rejected
+  spans, the `openai` 3.x SDK) and documentation; the offline checks passed
+  again on the released code (`976855e`) on all four Python versions.
 - Paid baseline, `gpt-6-luna`, 32 test sentences (66 requests over two runs,
   about USD 0.003): with model-written offsets, F1 0.065 (0.013-0.141), 65 of 70
   spans rejected; with quotes and offsets computed in code, F1 0.656 (0.516-0.785)
