@@ -16,10 +16,10 @@ cp .env.example .env   # set OPENAI_API_KEY; optional OPENAI_BASE_URL
 uv run --extra teacher python -m ner_demo.teacher --allow-paid
 ```
 
-- The default model is the dated snapshot `gpt-5.4-mini-2026-03-17`, chosen for
-  cost, not for NER accuracy. The command makes at most one request, with no
-  retries and at most 2,048 output tokens. It writes
-  `artifacts/teacher_annotations.jsonl`.
+- The default model is `gpt-6-luna`, chosen for cost, not for NER accuracy.
+  OpenAI publishes no dated snapshot for it, so each record saves the model ID the
+  API returns. The command makes at most one request, with no retries and at most
+  2,048 output tokens. It writes `artifacts/teacher_annotations.jsonl`.
 - `.env` is read only by commands that pass `--allow-paid`. No paid call runs in
   the tests or in CI.
 - Paid evaluation is capped at 32 documents of 4,000 characters, one repeat, and

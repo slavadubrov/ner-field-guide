@@ -33,7 +33,8 @@ models = ["gliner==0.2.29", "transformers==5.1.0", "torch==2.11.0"]
 # with GLiNER2.5 checkpoints and transformers 5. Same torch/transformers pins.
 gliner2 = ["gliner2[local]==2.1.0", "transformers==5.1.0", "torch==2.11.0"]
 onnx = ["onnxruntime==1.24.4", "onnx==1.21.0"]
-teacher = ["openai>=2.0,<3", "python-dotenv>=1.0.1,<2"]
+# openai 3.x talks HTTP through httpx2 (the tests mock it with httpx2).
+teacher = ["openai>=3.36.1,<4", "python-dotenv>=1.0.1,<2"]
 data = ["pyarrow>=19,<24"]
 
 [dependency-groups]

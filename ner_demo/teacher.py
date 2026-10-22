@@ -6,15 +6,17 @@ from pathlib import Path
 
 from ner_demo.core import LABELS, digest, validate_span
 
-# Dated snapshot of gpt-5.4-mini; the alias may move to a newer snapshot.
-MODEL = "gpt-5.4-mini-2026-03-17"
+# OpenAI publishes no dated snapshot for gpt-6-luna; each call saves the model ID
+# the API reports. Its default reasoning effort is medium, so `annotate` sets none.
+MODEL = "gpt-6-luna"
 PRICE = dict(
     checked="2026-10-22",
     currency="USD",
-    input_per_million=0.75,
-    cached_input_per_million=0.075,
-    output_per_million=4.50,
-    source="https://developers.openai.com/api/docs/models/gpt-5.4-mini",
+    input_per_million=0.10,
+    cached_input_per_million=0.01,
+    cache_write_per_million=0.125,
+    output_per_million=0.50,
+    source="https://developers.openai.com/api/docs/models/gpt-6-luna",
 )
 
 
@@ -143,7 +145,11 @@ def annotate(client, document, labels=LABELS, model=MODEL):
         )
         record["status"] = "invalid" if record["rejected"] else "ok"
     except Exception as exc:
-        record["rejected"] = [{"reason": type(exc).__name__}]
+        # Keep the provider's error code (e.g. insufficient_quota vs a rate limit)
+        # but not its message, which can echo request text.
+        code = getattr(exc, "code", None)
+        reason = type(exc).__name__ + (f": {code}" if isinstance(code, str) else "")
+        record["rejected"] = [{"reason": reason}]
     return record
 
 

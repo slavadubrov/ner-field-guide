@@ -1,5 +1,9 @@
 name: checks
-on: [push, pull_request]
+# Pull requests, plus pushes to main; a PR branch push would otherwise run twice.
+on:
+  push:
+    branches: [main]
+  pull_request:
 permissions:
   contents: read
 jobs:

@@ -219,9 +219,9 @@ checkpoint. PII recall was not measured.
 
 ## Not run
 
-- The paid OpenAI baseline (`llm`) and the teacher command: no paid requests were
-  made. Offline tests cover the request and the response handling through the
-  real SDK with a mock transport.
+- The paid OpenAI baseline (`llm`, `gpt-6-luna`) and the teacher command: no paid
+  request completed, so there are no LLM results. Offline tests cover the request
+  and the response handling through the real SDK with a mock transport.
 - GPU or MPS devices, Linux or Windows hosts, batching other than 1, and inputs
   longer than one sentence.
 - Fine-tuning: the training converter was checked with GLiNER's real collator;

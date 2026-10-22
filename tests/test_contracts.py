@@ -148,7 +148,7 @@ class Contracts(unittest.TestCase):
 
     def test_real_sdk_request_and_provenance(self):
         try:
-            import httpx
+            import httpx2
             from openai import OpenAI
         except ImportError:
             self.skipTest("install teacher extra to verify real SDK serialization")
@@ -156,7 +156,7 @@ class Contracts(unittest.TestCase):
 
         def respond(request):
             requests.append(json.loads(request.content))
-            return httpx.Response(
+            return httpx2.Response(
                 200,
                 json={
                     "id": "test",
@@ -183,7 +183,7 @@ class Contracts(unittest.TestCase):
 
         with OpenAI(
             api_key="test-placeholder",
-            http_client=httpx.Client(transport=httpx.MockTransport(respond)),
+            http_client=httpx2.Client(transport=httpx2.MockTransport(respond)),
         ) as client:
             result = annotate(client, smoke_documents()[2])
         self.assertEqual(result["actual_model"], "returned-snapshot")
@@ -192,6 +192,28 @@ class Contracts(unittest.TestCase):
         self.assertEqual(requests[0]["response_format"]["type"], "json_schema")
         self.assertEqual(requests[0]["reasoning_effort"], "none")
         self.assertNotIn("temperature", requests[0])
+
+        def no_credits(request):
+            error = dict(
+                message="You have no credits remaining.",
+                type="insufficient_quota",
+                param=None,
+                code="credit_balance_exhausted",
+            )
+            return httpx2.Response(429, json={"error": error})
+
+        transport = httpx2.MockTransport(no_credits)
+        with OpenAI(
+            api_key="test-placeholder",
+            max_retries=0,
+            http_client=httpx2.Client(transport=transport),
+        ) as client:
+            refused = annotate(client, smoke_documents()[2])
+        self.assertEqual(refused["status"], "error")
+        self.assertEqual(
+            refused["rejected"],
+            [{"reason": "RateLimitError: credit_balance_exhausted"}],
+        )
         failed = annotate(
             SimpleNamespace(
                 chat=SimpleNamespace(

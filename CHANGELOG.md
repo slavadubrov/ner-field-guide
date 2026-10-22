@@ -49,8 +49,11 @@ starts at 0.3.0.
   0.567 to 0.677. The article's baseline numbers used `simple`.
 - Every GLiNER checkpoint loads from its pinned local snapshot only
   (`local_files_only=True`); the bi-encoder's label tokenizer is pinned too.
-- The paid LLM baseline requests the dated snapshot `gpt-5.4-mini-2026-03-17`;
-  its price basis was re-checked on 2026-10-22.
+- The paid LLM baseline moves from `gpt-5.4-mini` to `gpt-6-luna` (price basis
+  checked on 2026-10-22; OpenAI publishes no dated snapshot for it) and to the
+  `openai` 3.x SDK, which sends requests through httpx2; the offline tests now mock
+  httpx2. A failed call records the provider's error code with the exception
+  type, so an exhausted quota is no longer reported as a plain rate limit.
 - Evaluation output: per-model configuration with its own threshold (`null` for
   models without one) replaces the single global threshold.
 - `ner_demo.data` writes `artifacts/few-nerd-<split>.json` by default (it always
@@ -58,7 +61,8 @@ starts at 0.3.0.
   and records the split size.
 - CI runs on Python 3.11 and 3.14, runs the ONNX graph tests (previously skipped
   because the `onnx` extra was not installed), and checks that the wheel ships
-  the license.
+  the license. It runs on pull requests and on pushes to `main`, so a pull
+  request commit is checked once instead of twice.
 - The sdist is built from an explicit file list.
 
 ### Fixed
@@ -119,8 +123,8 @@ Full tables: [docs/results.md](docs/results.md).
 - All measurements come from one machine (Apple M4, CPU, batch 1) and one
   English Wikipedia dataset restricted to three entity types. The intervals cover
   document resampling only, not other data, labels, or hardware.
-- Not run: the paid OpenAI baseline (including the dated snapshot pin), GPU and
-  MPS devices, and Linux or Windows hosts beyond CI's offline checks.
+- Not run: the paid OpenAI baseline (`gpt-6-luna`; no paid request completed),
+  GPU and MPS devices, and Linux or Windows hosts beyond CI's offline checks.
 - Inputs longer than a model's window are rejected; there is no windowing.
 - German and Russian support is checked with three functional sentences only; no
   multilingual accuracy was measured. Otter and GLiNER-X are not integrated; see
@@ -129,7 +133,6 @@ Full tables: [docs/results.md](docs/results.md).
   overlaps at all, so decoding differs between families.
 - On Linux x86_64 the locked torch wheel installs CUDA libraries even for CPU
   use. A CPU-only index would change the lock and is left to the maintainer.
-- `openai` stays below 3.0, which moved the SDK to httpx2.
 - `gliner`'s word splitter can leave a combining mark (NFD text) outside a span;
   normalize text to NFC before annotation and inference.
 - The streaming demo buffers the whole session, so release delay grows with the

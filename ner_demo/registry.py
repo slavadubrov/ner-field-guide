@@ -165,9 +165,9 @@ MODELS = {
     "llm": dict(
         family="OpenAI structured outputs (paid, opt-in)",
         role="baseline",
-        # Dated API snapshot, not the moving alias; each call also saves the
-        # model ID the API reports.
-        checkpoint="gpt-5.4-mini-2026-03-17",
+        # No dated snapshot is published; each call saves the model ID the API
+        # reports.
+        checkpoint="gpt-6-luna",
         revision=None,
         adapter="openai",
         labels="open",
@@ -175,7 +175,7 @@ MODELS = {
         task="NER",
         license="OpenAI terms of use",
         extra="teacher",
-        sources=["https://developers.openai.com/api/docs/models/gpt-5.4-mini"],
+        sources=["https://developers.openai.com/api/docs/models/gpt-6-luna"],
         verified=VERIFIED,
         status="contract",
         limitations="Paid; not run here. Offline tests use a mock HTTP transport.",

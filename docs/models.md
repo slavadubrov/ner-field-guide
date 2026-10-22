@@ -141,20 +141,29 @@ checkpoints.
   sentences). The setting was chosen for that reason, not tuned on test data.
 - Source: <https://huggingface.co/dslim/bert-base-NER>
 
-### Paid LLM baseline: OpenAI `gpt-5.4-mini-2026-03-17`
+### Paid LLM baseline: OpenAI `gpt-6-luna`
 
-- The dated snapshot of `gpt-5.4-mini`, current and not deprecated on 2026-10-22
-  ([models](https://developers.openai.com/api/docs/models/gpt-5.4-mini),
-  [deprecations](https://developers.openai.com/api/docs/deprecations)). Chat
-  Completions with `reasoning_effort="none"`, `max_completion_tokens=2048`, and a
-  strict `json_schema` response format, all still documented for this model.
-  Price basis recorded in `ner_demo/teacher.py`: USD 0.75 input, 0.075 cached input,
-  4.50 output per million tokens.
-- Not run in this repository. Every paid path needs `--allow-paid`; offline tests
-  send the real SDK request through a mock HTTP transport.
-- The SDK stays below 3.0: `openai` 3.0.0 replaced httpx with httpx2 and would
-  require changing the mocked transport
-  ([changelog](https://github.com/openai/openai-python/blob/main/CHANGELOG.md)).
+- `gpt-6-luna` replaces `gpt-5.4-mini`. It is current and not deprecated on
+  2026-10-22 ([model page](https://developers.openai.com/api/docs/models/gpt-6-luna),
+  [deprecations](https://developers.openai.com/api/docs/deprecations)). OpenAI
+  publishes no dated snapshot for it, so the alias can change; every call saves the
+  model ID the API returns.
+- Chat Completions with a strict `json_schema` response format and
+  `max_completion_tokens=2048`. The model's default reasoning effort is `medium`,
+  so the request sets `reasoning_effort="none"` explicitly. All three are
+  documented for this model.
+- Price basis recorded in `ner_demo/teacher.py`: USD 0.10 input, 0.01 cached input,
+  0.125 cache write, and 0.50 output per million tokens (standard tier, prompts up
+  to 272K tokens).
+- SDK: `openai` 3.36.1. Since 3.0 the SDK sends requests through httpx2 instead of
+  httpx, so the offline tests mock it with `httpx2.MockTransport`
+  ([migration notes](https://github.com/openai/openai-python/blob/main/httpx2.md)).
+- A failed call keeps the exception type and the provider's error code, for
+  example `RateLimitError: credit_balance_exhausted`, but not the message, which
+  can echo request text.
+- Not run in this repository: no paid request completed. Every paid path needs
+  `--allow-paid`; offline tests send the real SDK request through a mock HTTP
+  transport, including a quota error.
 
 ## Considered, not integrated
 
@@ -172,9 +181,10 @@ checkpoints.
   --all-extras` installs one consistent environment. `gliner2` is a separate extra
   because it adds `peft` and `accelerate`.
 - Pins: `gliner==0.2.29`, `gliner2[local]==2.1.0`, `transformers==5.1.0`,
-  `torch==2.11.0`, `onnxruntime==1.24.4`, `onnx==1.21.0`, `openai>=2,<3`. Only
-  `gliner` changed (from 0.2.28) and `gliner2` was added; transformers stays at
-  5.1.0, inside the range both GLiNER packages accept.
+  `torch==2.11.0`, `onnxruntime==1.24.4`, `onnx==1.21.0`, `openai>=3.36.1,<4`.
+  `gliner` moved from 0.2.28, `gliner2` was added, and `openai` moved from 2.30.0
+  to 3.x; transformers stays at 5.1.0, inside the range both GLiNER packages
+  accept.
 - On Linux x86_64 the locked `torch==2.11.0` wheel from PyPI depends on CUDA
   libraries (`nvidia-*` packages, several GB), even for CPU-only use. Pointing
   torch at PyTorch's CPU index would change the lock for every user; that choice
