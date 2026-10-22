@@ -178,9 +178,8 @@ MODELS = {
         sources=["https://developers.openai.com/api/docs/models/gpt-6-luna"],
         verified=VERIFIED,
         status="validated",
-        limitations="Paid; capped at 32 documents per run. The model writes the "
-        "character offsets itself, and most did not match their text "
-        "(docs/results.md).",
+        limitations="Paid; capped at 32 documents per run. The model quotes each "
+        "entity and its appearance number; offsets are computed in code.",
     ),
     "streaming": dict(
         family="GLiNER Streaming PII (Knowledgator)",

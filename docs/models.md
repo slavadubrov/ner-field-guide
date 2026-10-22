@@ -161,9 +161,13 @@ checkpoints.
 - A failed call keeps the exception type and the provider's error code, for
   example `RateLimitError: credit_balance_exhausted`, but not the message, which
   can echo request text.
-- Run on 2026-10-22: one teacher request and the 32-sentence evaluation, about
-  USD 0.0014 in total. Exact-span F1 was 0.065 because the model miscounted the
-  character offsets of most spans; see [results](results.md#paid-llm-baseline-gpt-6-luna).
+- The model returns each entity's exact text, which appearance of that text it is
+  (counting whole-word appearances), and a label; `ner_demo.teacher.locate`
+  computes the offsets. When the model wrote offsets itself, 65 of its 70 spans
+  on the 32 test sentences did not match their text (F1 0.065); with quotes,
+  every span resolved (F1 0.656). See
+  [results](results.md#paid-llm-baseline-gpt-6-luna). The two runs cost about
+  USD 0.003 together.
   Every paid path needs `--allow-paid`; offline tests send the real SDK request
   through a mock HTTP transport, including a quota error.
 

@@ -6,9 +6,12 @@ These match sections of the
 
 ## LLM annotations and training input (paid, opt-in)
 
-`ner_demo.teacher` sends one Chat Completions request with a strict JSON Schema,
-checks the returned offsets, labels, source text, and duplicates, and saves
-rejected annotations with reasons. It records the requested and returned model,
+`ner_demo.teacher` sends one Chat Completions request with a strict JSON Schema.
+The model quotes each entity exactly and says which appearance of the quote it
+is; the code computes the offsets from that, because models miscount characters.
+A quote that does not appear as whole words, an appearance number that does not
+exist, an unknown label, or a duplicate is rejected with a reason, and nothing is
+searched for beyond the stated appearance. It records the requested and returned model,
 prompt, settings, usage, and price basis. Records start unreviewed.
 
 ```sh

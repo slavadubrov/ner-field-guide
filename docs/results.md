@@ -7,9 +7,9 @@ transformers 5.1.0, torch 2.11.0, ONNX Runtime 1.24.4. Models loaded offline
 (`HF_HUB_OFFLINE=1`) from the pinned revisions. The local-model tables were
 produced by running the README commands in a fresh clone of commit `a85ffa3` (the
 outputs record `git_dirty: false`); an earlier run from the uncommitted working
-tree gave identical counts, thresholds, and intervals. The paid LLM table was
-produced afterwards from a clean checkout of commit `5b3c7da` with `openai`
-3.36.1.
+tree gave identical counts, thresholds, and intervals. The paid LLM runs were
+made afterwards from clean checkouts of commits `5b3c7da` and `c4cdeb1` with
+`openai` 3.36.1.
 
 The task is Few-NERD's three coarse types (person, organization, location) on
 English Wikipedia sentences. These results check the adapters under one set of
@@ -198,38 +198,48 @@ comparable with this machine's.
 
 Run on 2026-10-22 against `api.openai.com` with the README command, on the same
 32 test sentences as the small configuration (the CLI caps the paid baseline at
-32 documents). Every request finished normally and the API reported the model as
-`gpt-6-luna`.
+32 documents). Every request finished normally, and the API reported the model as
+`gpt-6-luna`. The baseline was run twice: first asking the model for character
+offsets, then asking it to quote each entity and say which appearance of the
+quote it is, with offsets computed in code.
+
+| Protocol (commit) | TP/FP/FN | P | R | F1 (95% CI) | Scored | Spans rejected | Tokens in/out | Cost |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Model-written offsets (`5b3c7da`) | 4/66/50 | 0.057 | 0.074 | 0.065 (0.013-0.141) | 8/32 | 65 of 70 | 5,528 / 1,681 | USD 0.0014 |
+| Quote and appearance number (`c4cdeb1`) | 43/34/11 | 0.558 | 0.796 | 0.656 (0.516-0.785) | 32/32 | 0 of 77 | 6,584 / 1,574 | USD 0.0015 |
+
+With model-written offsets the model named many of the right entities but
+miscounted their positions: the text of all 65 rejected spans occurs in the
+sentence, 40 of them name a gold entity with the gold label, and the returned
+start was off by a median of 2 characters (range -27 to +52). The scorer does not
+search for the text, so each of those spans counted as a false positive. With
+quotes, every returned entity resolved to an exact position. No sentence in this
+sample repeats an entity, so appearance numbers above 1 are covered only by the
+offline tests.
+
+Run with quotes:
 
 Data: DFKI-SLT/few-nerd@205f3e9 split=test; 32 documents; labels: person, organization, location
-Run: Apple M4, 10 logical CPUs, torch threads -, device cpu, batch 1, 0 warmup, 1 repeats; git 5b3c7da
+Run: Apple M4, 10 logical CPUs, torch threads -, device cpu, batch 1, 0 warmup, 1 repeats; git c4cdeb1
 Thresholds: fixed 0.5
 
 | Model | Checkpoint | Labels | Threshold | P | R | F1 | F1 95% CI | TP/FP/FN | Attempted | Scored | Failed | Missing | Load ms | Label cache ms | First call ms | p50 ms | p95 ms |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| llm | gpt-6-luna | open | - | 0.057 | 0.074 | 0.065 | 0.013-0.141 | 4/66/50 | 32 | 8 | 0 | 0 | 281 | - | - | 1841.5 | 3687.9 |
+| llm | gpt-6-luna | open | - | 0.558 | 0.796 | 0.656 | 0.516-0.785 | 43/34/11 | 32 | 32 | 0 | 0 | 189 | - | - | 1573.1 | 2689.5 |
 
 | Per-label F1 | person | organization | location |
 | --- | --- | --- | --- |
-| llm | 0.080 | 0.034 | 0.100 |
+| llm | 0.720 | 0.603 | 0.698 |
 
 Scored = completed with only valid spans. Failed and missing documents stay in the denominator. F1 95% CI = document bootstrap, 1,000 resamples, the same resamples for every model. First call = warmup on the first document.
 
-The model recognized many of the right entities but miscounted their positions.
-It returned 70 spans; 5 had offsets that matched their text and 65 were rejected
-(63 because `text[start:end]` did not equal the returned text, 2 because the
-offsets were out of range). The text of all 65 rejected spans occurs in the
-sentence, and 40 of them name a gold entity with the gold label. The returned
-start was off by a median of 2 characters (range -27 to +52). The scorer does not
-search for the text: each rejected span is a false positive and marks its
-sentence as not scored, which is why only 8 of 32 sentences were scored. This
-F1 measures exact spans with model-written offsets, not entity recognition
-alone.
-
-Cost: 5,528 input and 1,681 output tokens, no reasoning tokens, no cache writes;
-about USD 0.0014 at the recorded price basis. The single `ner_demo.teacher`
-request used 157 input and 46 output tokens and had the same problem: "NVIDIA"
-matched, and "Arm" came back at characters 41-44 instead of 45-48.
+The quoted run's interval overlaps those of every local model on the same 32
+sentences at threshold 0.5 (F1 0.566-0.677), so this sample does not rank the
+LLM against them. Latency is about 1.6 s per sentence (p50), against 12-39 ms for
+the local models on CPU. No reasoning tokens or cache writes were billed. The
+single `ner_demo.teacher` request shows the same difference: with offsets, "Arm"
+came back at characters 41-44 instead of 45-48; with a quote it resolved to
+45-48.
 
 ## English, German, and Russian functional examples
 

@@ -63,7 +63,7 @@ checks of offsets and repeated mentions, not an accuracy test. Without
 | `gliner-multi` | GLiNER v2.1 multilingual (urchade) (current) | `urchade/gliner_multi-v2.1` @ `443d26d654e0324125a96bebd8e796c14ff2efe6` | multilingual (card lists no languages; mDeBERTa-v3 backbone); NER | models | `uv run --extra models python -m ner_demo.quickstart --model gliner-multi --examples --download` | validated | No per-language accuracy published for v2.1; the English/German/Russian examples here are functional checks only. |
 | `gliner2` | GLiNER2.5 (Fastino) (current) | `fastino/gliner2.5-base-v1` @ `54785d51df8d86a0d8f2eb212fec15871aad2c4d` | en; NER | gliner2 | `uv run --extra gliner2 python -m ner_demo.quickstart --model gliner2 --examples --download` | validated | Separate `gliner2` package. Overlaps are resolved per label, so spans with different labels may overlap. NER only here. |
 | `encoder` | BERT token classification (CoNLL-2003) (baseline) | `dslim/bert-base-NER` @ `d1a3e8f13f8c3566299d95fcfc9a8d2382a9affc` | en; NER | models | `uv run --extra models python -m ner_demo.quickstart --model encoder --examples --download` | validated | Fixed PER/ORG/LOC/MISC labels; MISC is dropped. Older supervised baseline, not a current recommendation. |
-| `llm` | OpenAI structured outputs (paid, opt-in) (baseline) | `gpt-6-luna` | multilingual (provider claim); NER | teacher | `uv run --extra teacher python -m ner_demo.evaluate --models llm --allow-paid --repeats 1 --warmups 0` | validated | Paid; capped at 32 documents per run. The model writes the character offsets itself, and most did not match their text (docs/results.md). |
+| `llm` | OpenAI structured outputs (paid, opt-in) (baseline) | `gpt-6-luna` | multilingual (provider claim); NER | teacher | `uv run --extra teacher python -m ner_demo.evaluate --models llm --allow-paid --repeats 1 --warmups 0` | validated | Paid; capped at 32 documents per run. The model quotes each entity and its appearance number; offsets are computed in code. |
 | `streaming` | GLiNER Streaming PII (Knowledgator) (current) | `knowledgator/gliner-stream-pii-v1.0` @ `e871777dc4b3b688747a0433fff8d94a36fcc7b0` | en; PII (streaming) | models | `uv run --extra models python -m ner_demo.streaming --download` | validated | Buffering demo only; detector recall is not measured here. |
 
 Status: **validated** means loaded from the pinned revision and run on real text
@@ -134,7 +134,8 @@ GLiNER v2.5, and the fixed-label BERT baseline have overlapping 95% intervals,
 so this slice does not separate them; GLiNER v2.1 medium and multilingual v2.1
 score lower. The newest checkpoint, GLiNER2.5, does not have the highest F1
 here. The paid `gpt-6-luna` baseline, run on the 32-sentence slice only, scored
-F1 0.065 because it miscounted the character offsets of most spans. Per-label
+F1 0.656 (0.516-0.785) when it quoted entities and the code computed offsets, and
+0.065 when it wrote offsets itself. Per-label
 scores, threshold sweeps, the 32-sentence check, ONNX FP32/INT8,
 label caching, the multilingual examples, and the article's historical numbers
 (kept separate from these) are in [docs/results.md](docs/results.md).

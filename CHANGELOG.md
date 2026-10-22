@@ -47,6 +47,10 @@ starts at 0.3.0.
   `simple` split words into partial entities ("Merk" + "el"); on the 32 Few-NERD
   test sentences word-splitting spans fell from 22 to 1 and micro F1 rose from
   0.567 to 0.677. The article's baseline numbers used `simple`.
+- The LLM teacher and baseline ask for each entity's exact quote, its
+  appearance number, and its label, and compute the offsets in code. Asked for
+  offsets directly, `gpt-6-luna` miscounted 65 of 70 spans on the 32 test
+  sentences.
 - Every GLiNER checkpoint loads from its pinned local snapshot only
   (`local_files_only=True`); the bi-encoder's label tokenizer is pinned too.
 - The paid LLM baseline moves from `gpt-5.4-mini` to `gpt-6-luna` (price basis
@@ -120,10 +124,11 @@ Run on 2026-10-22 on an Apple M4 (10 logical CPUs, macOS 27.2), CPU only.
   comparisons, ONNX check, streaming demo, and both test suites. Counts,
   selected thresholds, and intervals matched the earlier run exactly.
 
-- Paid baseline, `gpt-6-luna`, 32 test sentences (33 requests with the teacher
-  check, about USD 0.0014): every request finished, but exact-span F1 was 0.065
-  (0.013-0.141) because 65 of the 70 returned spans had character offsets that did
-  not match their text.
+- Paid baseline, `gpt-6-luna`, 32 test sentences (66 requests over two runs,
+  about USD 0.003): with model-written offsets, F1 0.065 (0.013-0.141), 65 of 70
+  spans rejected; with quotes and offsets computed in code, F1 0.656 (0.516-0.785)
+  and no span rejected. The quoted run's interval overlaps every local model's on
+  the same sentences.
 
 Full tables: [docs/results.md](docs/results.md).
 
@@ -134,10 +139,10 @@ Full tables: [docs/results.md](docs/results.md).
   document resampling only, not other data, labels, or hardware.
 - Not run: GPU and MPS devices, and Linux or Windows hosts beyond CI's offline
   checks.
-- The LLM baseline asks the model for character offsets, and `gpt-6-luna`
-  miscounted most of them, so its exact-span score says more about offset
-  arithmetic than about entity recognition. Deriving offsets in code from a
-  returned quotation would avoid this; it is not implemented.
+- The quote protocol cannot place a quote the model changed (spacing,
+  punctuation, spelling); such quotes are rejected, not repaired. No repeated
+  mention occurred in the 32 paid sentences, so appearance numbers above 1 are
+  covered only by offline tests.
 - Inputs longer than a model's window are rejected; there is no windowing.
 - German and Russian support is checked with three functional sentences only; no
   multilingual accuracy was measured. Otter and GLiNER-X are not integrated; see

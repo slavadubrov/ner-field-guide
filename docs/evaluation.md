@@ -112,7 +112,7 @@ the models and are recorded rather than hidden:
 | `gliner-bi`, `gliner-bi-cached` | open (separate label encoder) | flat across labels | over 2,048 words, over 7,999 text subwords, or a label over 512 label-encoder tokens |
 | `gliner2` | open | flat within each label; different labels may overlap | over 4,096 words |
 | `encoder` | fixed CoNLL labels; MISC dropped | BIO with `first` aggregation | over 512 subwords |
-| `llm` | open | strict JSON schema; a span whose offsets do not match the text counts as a false positive; refusals, truncated output, and API errors fail the document | the CLI caps documents at 4,000 characters |
+| `llm` | open | strict JSON schema with the quoted text and its appearance number; offsets computed in code; a quote that does not resolve counts as a false positive; refusals, truncated output, and API errors fail the document | the CLI caps documents at 4,000 characters |
 
 Open-vocabulary models are prompted with the label names `person`,
 `organization`, and `location`. These are common types in their training data,
