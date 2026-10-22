@@ -19,7 +19,7 @@ class BufferedPII:
     def __init__(self, model, labels, max_chars=16000):
         self.model, self.labels = model, list(labels)
         self.session_id = str(uuid.uuid4())
-        self.text, self.closed = "", False
+        self.text, self.pending, self.closed = "", "", False
         self.max_chars = max_chars
         self.started = time.perf_counter()
         self.release_delay_ms = None
@@ -35,8 +35,18 @@ class BufferedPII:
             ):
                 raise ValueError("chunk is empty, invalid, or exceeds session bound")
             self.text += chunk
+            # The session API ignores whitespace-only chunks, which would shift
+            # every later offset. Hold them until a chunk with visible text.
+            self.pending += chunk
+            if not self.pending.strip():
+                return ""
             if hasattr(self.model, "data_processor"):
                 processor = self.model.data_processor
+                # finish() runs GLiNER over the whole text, which keeps only the
+                # first max_len words and releases the rest unscanned.
+                words = sum(1 for _ in processor.words_splitter(self.text))
+                if words > self.model.config.max_len:
+                    raise ValueError("session exceeds the model word limit")
                 token_count = len(
                     processor.transformer_tokenizer.encode(
                         self.text + " " + " ".join(self.labels)
@@ -45,8 +55,9 @@ class BufferedPII:
                 if token_count + 64 > self.model.config.max_len:
                     raise ValueError("session exceeds conservative model token budget")
             snapshot = self.model.inference(
-                [chunk], self.labels, session_id=[self.session_id], threshold=0.5
+                [self.pending], self.labels, session_id=[self.session_id], threshold=0.5
             )[0]
+            self.pending = ""
             for entity in snapshot:
                 validate_span(self.text, entity, self.labels)
             return ""  # Do not expose intermediate spans or source text to downstream output.
@@ -78,7 +89,7 @@ class BufferedPII:
     def close(self):
         if not self.closed:
             self.closed = True
-            self.text = ""
+            self.text = self.pending = ""
             self.model.clear_session(self.session_id)
 
     def __enter__(self):

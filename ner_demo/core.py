@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import random
 from collections import Counter
 
 LABELS = ["person", "organization", "location"]
@@ -53,6 +54,14 @@ def validate_documents(documents, labels):
     return by_id
 
 
+def load_bundle(path):
+    """Read a dataset bundle and check its documents against the manifest hash."""
+    bundle = json.loads(path.read_text())
+    if bundle["manifest"]["documents_sha256"] != digest(bundle["documents"]):
+        raise ValueError(f"{path}: documents do not match the manifest hash")
+    return bundle
+
+
 def prf(tp, fp, fn):
     p = tp / (tp + fp) if tp + fp else 0.0
     r = tp / (tp + fn) if tp + fn else 0.0
@@ -86,11 +95,12 @@ def score(documents, records, labels):
             raise ValueError("entities must be a list")
         results[key] = row
     counts = {label: [0, 0, 0] for label in labels}
-    invalid = completed = valid_docs = 0
+    invalid = completed = failed = valid_docs = 0
     for doc_id, doc in gold.items():
         target = Counter(validate_span(doc["text"], e, labels) for e in doc["entities"])
         row = results.get(doc_id, {"status": "skipped", "entities": []})
         completed += row["status"] == "ok"
+        failed += row["status"] == "error"
         predicted = Counter()
         bad = 0
         # Preserve partial predictions on errors too: they can add FP, but not TP.
@@ -129,12 +139,41 @@ def score(documents, records, labels):
         per_label=per_label,
         headline=micro if valid_docs == len(gold) else None,
         planned_documents=len(gold),
+        attempted_documents=completed + failed,
         completed_documents=completed,
+        failed_documents=failed,
+        missing_documents=len(gold) - completed - failed,
+        # Scored: completed with every predicted span valid.
         valid_documents=valid_docs,
         completion=completed / len(gold),
         scoring_coverage=valid_docs / len(gold),
         unknown_label_fp=invalid,
     )
+
+
+def f1_interval(documents, records, labels, samples=1000, seed=0):
+    """95% percentile bootstrap interval of micro F1, resampling documents.
+
+    The fixed seed draws the same document resamples for every model, so the
+    intervals of models scored on one dataset are comparable.
+    """
+    rows = {row["document_id"]: [row] for row in records}
+    counts = [
+        [
+            score([doc], rows.get(doc["document_id"], []), labels)["micro"][key]
+            for key in ("tp", "fp", "fn")
+        ]
+        for doc in documents
+    ]
+    rng = random.Random(seed)
+    totals = [
+        list(map(sum, zip(*rng.choices(counts, k=len(counts))))) for _ in range(samples)
+    ]
+    # F1 is undefined for a resample with no gold and no predicted spans.
+    f1 = sorted(prf(*t)["f1"] for t in totals if any(t))
+    if not f1:
+        return None
+    return f1[int(0.025 * len(f1))], f1[int(0.975 * len(f1)) - 1]
 
 
 def smoke_documents():
@@ -157,4 +196,50 @@ def smoke_documents():
             ],
         },
         {"document_id": "smoke:empty", "text": "Nothing to extract!", "entities": []},
+    ]
+
+
+def example_documents():
+    """English, German, and Russian functional examples; not a benchmark.
+
+    Each has a repeated organization, a short repeated person mention, and
+    non-ASCII text, so offsets must be Python character indices.
+    """
+    return [
+        {
+            "document_id": "example:en",
+            "text": "Angela Merkel visited Siemens in Munich. "
+            "Later, Merkel met engineers from Siemens.",
+            "entities": [
+                {"start": 0, "end": 13, "text": "Angela Merkel", "label": "person"},
+                {"start": 22, "end": 29, "text": "Siemens", "label": "organization"},
+                {"start": 33, "end": 39, "text": "Munich", "label": "location"},
+                {"start": 48, "end": 54, "text": "Merkel", "label": "person"},
+                {"start": 74, "end": 81, "text": "Siemens", "label": "organization"},
+            ],
+        },
+        {
+            "document_id": "example:de",
+            "text": "Angela Merkel besuchte Siemens in München. "
+            "Später traf Merkel Ingenieure von Siemens.",
+            "entities": [
+                {"start": 0, "end": 13, "text": "Angela Merkel", "label": "person"},
+                {"start": 23, "end": 30, "text": "Siemens", "label": "organization"},
+                {"start": 34, "end": 41, "text": "München", "label": "location"},
+                {"start": 55, "end": 61, "text": "Merkel", "label": "person"},
+                {"start": 77, "end": 84, "text": "Siemens", "label": "organization"},
+            ],
+        },
+        {
+            "document_id": "example:ru",
+            "text": "Ангела Меркель посетила Siemens в Мюнхене. "
+            "Позже Меркель встретилась с инженерами Siemens.",
+            "entities": [
+                {"start": 0, "end": 14, "text": "Ангела Меркель", "label": "person"},
+                {"start": 24, "end": 31, "text": "Siemens", "label": "organization"},
+                {"start": 34, "end": 41, "text": "Мюнхене", "label": "location"},
+                {"start": 49, "end": 56, "text": "Меркель", "label": "person"},
+                {"start": 82, "end": 89, "text": "Siemens", "label": "organization"},
+            ],
+        },
     ]

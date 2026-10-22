@@ -6,9 +6,10 @@ from pathlib import Path
 
 from ner_demo.core import LABELS, digest, validate_span
 
-MODEL = "gpt-5.4-mini"
+# Dated snapshot of gpt-5.4-mini; the alias may move to a newer snapshot.
+MODEL = "gpt-5.4-mini-2026-03-17"
 PRICE = dict(
-    checked="2026-09-06",
+    checked="2026-10-22",
     currency="USD",
     input_per_million=0.75,
     cached_input_per_million=0.075,

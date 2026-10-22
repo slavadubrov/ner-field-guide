@@ -2,243 +2,169 @@
 
 Companion code for the article
 [NER Guide 2026: GLiNER, spaCy, Transformers, and LLMs](https://slavadubrov.com/blog/2026/04/02/ner-guide/).
-It covers exact span scoring, local evaluation on a pinned dataset, conversion of
-reviewed LLM annotations into GLiNER training input, ONNX FP32/INT8 checks, and a
-streaming PII example.
 
-The 32-document runs below check that each path works. They are too small to rank
-models.
+A small reference project for engineers who need to choose or check a named
+entity recognition (NER) model. It runs pinned GLiNER-family checkpoints and two
+baselines on the same pinned documents and scores them as exact character spans,
+with failed and missing documents kept in the denominator. It also contains the
+article's other workflows: reviewed LLM annotations as GLiNER training input,
+ONNX FP32/INT8 export checks, and buffered streaming PII redaction.
 
-| Command group | Article section |
-| --- | --- |
-| Quickstart | GLiNER: span-to-label matching for open-vocabulary NER |
-| Evaluation and dataset import | Evaluating NER: metrics, pitfalls, and test sets |
-| Teacher annotations and training input | LLMs as teachers |
-| ONNX packages and INT8 | Deployment optimization |
-| Streaming PII | Streaming PII changes when you can release text |
+It is not a leaderboard. The runs below check that each path works under one set
+of rules on one machine; they do not rank model families.
 
-## Setup and offline checks
+The code follows these article sections: GLiNER, its bi-encoder, and GLiNER2.5
+(quickstart and adapters); evaluating NER (scorer and evaluation runner); LLMs as
+teachers (annotation and training input); deployment optimization (ONNX); and
+streaming PII.
 
-Python 3.11+ and [uv](https://docs.astral.sh/uv/) are required.
+## Install and run the offline example
+
+Python 3.11-3.14 and [uv](https://docs.astral.sh/uv/). The base package uses only
+the standard library.
 
 ```sh
 uv sync --locked
 uv run python -m scripts.run_all
-uv run python -m unittest discover -s tests -v
-uv run ruff check .
-uv run ruff format --check .
-uv build
 ```
 
-The base package uses only the standard library. `run_all` runs the offline rules
-smoke test. Imports never load models or call providers. The numbered files in
-`scripts/` call the matching `ner_demo` module.
+This scores a literal-dictionary adapter on three synthetic documents (repeated
+mentions, non-ASCII text, an empty document) and prints the report table. It
+downloads nothing and needs no credentials. Output is written to
+`artifacts/evaluation.json`; `artifacts/` is git-ignored.
 
-## Quickstart
+## Run a real model
+
+Model weights download only when a command gets `--download`. Checkpoints take
+roughly 0.4-2.7 GB each.
 
 ```sh
 uv sync --locked --all-extras
-uv run --all-extras python -m ner_demo.quickstart --download   # first run
-uv run --all-extras python -m ner_demo.quickstart              # cached models only
+uv run python -m ner_demo.quickstart --model gliner2 --examples --download
+HF_HUB_OFFLINE=1 uv run python -m ner_demo.quickstart --model gliner2 --examples
 ```
 
-Example output:
+`--examples` runs one English, one German, and one Russian sentence and prints
+each span with its character offsets and the model's score. They are functional
+checks of offsets and repeated mentions, not an accuracy test. Without
+`--examples` the quickstart prints the spans for one English sentence.
 
-```text
-[{'start': 0, 'end': 10, 'text': 'Bill Gates', 'label': 'person', 'score': 0.99...},
- {'start': 19, 'end': 28, 'text': 'Microsoft', 'label': 'organization', 'score': 0.97...}]
-```
+## Supported models
 
-Model downloads require explicit `--download`; checkpoints can use several GB.
-Set `HF_HUB_OFFLINE=1` to force offline inference. `.env` is read only when you
-select a paid adapter. Never commit credentials, weights, datasets, or generated
-predictions. All output goes to the ignored `artifacts/` directory.
+`Run name` is the value for `--model` (quickstart) and `--models` (evaluation).
 
-## Evaluation
+| Run name | Family (role) | Checkpoint @ revision | Languages; task | Extra | Command | Status | Limitations |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `rules` | Literal dictionary (smoke test) | - | any; NER | - | `uv run python -m ner_demo.evaluate` | validated | Matches four known strings; no general recall. |
+| `gliner` | GLiNER v2.1 (urchade) (baseline) | `urchade/gliner_medium-v2.1` @ `40ec419335d09393f298636f471328b722c6da9e` | en; NER | models | `uv run --extra models python -m ner_demo.quickstart --model gliner --examples --download` | validated | Article reproducibility baseline; only model with a validated ONNX FP32/INT8 path. |
+| `gliner25` | GLiNER v2.5 (gliner-community) (current) | `gliner-community/gliner_small-v2.5` @ `f227d3cd637bd4e6757ae143935316d062393341` | en; NER | models | `uv run --extra models python -m ner_demo.quickstart --model gliner25 --examples --download` | validated | Model generation v2.5, unrelated to Fastino GLiNER2.5. |
+| `gliner-bi` | GLiNER bi-encoder v2.0 (Knowledgator) (current) | `knowledgator/gliner-bi-small-v2.0` @ `3d74c1bf459b8b1c0be1ecbddd679416ce005418` | en; NER | models | `uv run --extra models python -m ner_demo.quickstart --model gliner-bi --examples --download` | validated | Encodes the labels on every call. |
+| `gliner-bi-cached` | GLiNER bi-encoder v2.0 (Knowledgator) (current) | `knowledgator/gliner-bi-small-v2.0` @ `3d74c1bf459b8b1c0be1ecbddd679416ce005418` | en; NER | models | `uv run --extra models python -m ner_demo.quickstart --model gliner-bi-cached --examples --download` | validated | Label embeddings computed once per run and reused. |
+| `gliner-multi` | GLiNER v2.1 multilingual (urchade) (current) | `urchade/gliner_multi-v2.1` @ `443d26d654e0324125a96bebd8e796c14ff2efe6` | multilingual (card lists no languages; mDeBERTa-v3 backbone); NER | models | `uv run --extra models python -m ner_demo.quickstart --model gliner-multi --examples --download` | validated | No per-language accuracy published for v2.1; the English/German/Russian examples here are functional checks only. |
+| `gliner2` | GLiNER2.5 (Fastino) (current) | `fastino/gliner2.5-base-v1` @ `54785d51df8d86a0d8f2eb212fec15871aad2c4d` | en; NER | gliner2 | `uv run --extra gliner2 python -m ner_demo.quickstart --model gliner2 --examples --download` | validated | Separate `gliner2` package. Overlaps are resolved per label, so spans with different labels may overlap. NER only here. |
+| `encoder` | BERT token classification (CoNLL-2003) (baseline) | `dslim/bert-base-NER` @ `d1a3e8f13f8c3566299d95fcfc9a8d2382a9affc` | en; NER | models | `uv run --extra models python -m ner_demo.quickstart --model encoder --examples --download` | validated | Fixed PER/ORG/LOC/MISC labels; MISC is dropped. Older supervised baseline, not a current recommendation. |
+| `llm` | OpenAI structured outputs (paid, opt-in) (baseline) | `gpt-5.4-mini-2026-03-17` | multilingual (provider claim); NER | teacher | `uv run --extra teacher python -m ner_demo.evaluate --models llm --allow-paid --repeats 1 --warmups 0` | contract | Paid; not run here. Offline tests use a mock HTTP transport. |
+| `streaming` | GLiNER Streaming PII (Knowledgator) (current) | `knowledgator/gliner-stream-pii-v1.0` @ `e871777dc4b3b688747a0433fff8d94a36fcc7b0` | en; PII (streaming) | models | `uv run --extra models python -m ner_demo.streaming --download` | validated | Buffering demo only; detector recall is not measured here. |
+
+Status: **validated** means loaded from the pinned revision and run on real text
+here on 2026-10-22, offline (`HF_HUB_OFFLINE=1`); **contract** means covered only
+by offline tests with fakes or mocks. Checkpoints, revisions, and licenses were
+verified on 2026-10-22. Sources, integration details, and the models considered
+but not integrated (including Otter and GLiNER-X) are in
+[docs/models.md](docs/models.md). Model licenses are those of the checkpoints;
+this repository's MIT license covers only its own code.
+
+## Compare models
+
+Import pinned Few-NERD slices (CC-BY-SA-4.0), choose thresholds on the validation
+slice, and compare on the test slice:
 
 ```sh
-uv run --all-extras python -m ner_demo.evaluate --models rules gliner --repeats 3
+uv run python -m ner_demo.data --split validation --limit 500
+uv run python -m ner_demo.data --split test --limit 2000 \
+  --exclude artifacts/few-nerd-validation.json --output artifacts/few-nerd-test-2000.json
+uv run python -m ner_demo.evaluate --dataset artifacts/few-nerd-validation.json \
+  --models gliner gliner25 gliner-bi gliner-bi-cached gliner-multi gliner2 \
+  --sweep 0.3 0.4 0.5 0.6 0.7 0.8 0.9 0.95 0.97 --repeats 1 --warmups 0 \
+  --output artifacts/thresholds-validation-500.json
+uv run python -m ner_demo.evaluate --dataset artifacts/few-nerd-test-2000.json \
+  --models rules encoder gliner gliner25 gliner-bi gliner-bi-cached gliner-multi gliner2 \
+  --thresholds-from artifacts/thresholds-validation-500.json --repeats 1 \
+  --output artifacts/comparison-test-2000.json
 ```
 
-Without `--dataset`, this scores a few synthetic smoke documents. The rules adapter
-is a tiny literal dictionary for known strings;
-[spaCy EntityRuler](https://spacy.io/api/entityruler) is the native alternative in
-a spaCy pipeline. It has no general-domain recall.
-
-### Real dataset import and comparison
+Add `--download` to a command the first time it needs a checkpoint that is not cached.
+The smaller integration check that the article used is the first 32 test
+sentences at a fixed threshold of 0.5:
 
 ```sh
-uv run --all-extras python -m ner_demo.data --split test --limit 32
-uv run --all-extras python -m ner_demo.evaluate \
-  --dataset artifacts/few-nerd-test.json --models rules encoder gliner gliner25 \
-  --repeats 3 --output artifacts/few-nerd-evaluation.json
+uv run python -m ner_demo.data --split test --limit 32
+uv run python -m ner_demo.evaluate --dataset artifacts/few-nerd-test.json \
+  --models rules encoder gliner gliner25 gliner-bi gliner-bi-cached gliner-multi gliner2 \
+  --output artifacts/comparison-test-32.json
 ```
 
-The first uncached model run needs `--download`. Example output on the first 32
-test sentences (one line per adapter, shortened):
+Each run writes one JSON file with the dataset manifest, per-model configuration
+(checkpoint, revision, threshold), environment, every raw prediction, and the
+metrics, then prints Markdown tables (`python -m ner_demo.report <file>` prints
+them again). The runner refuses to choose thresholds on a `test` split or to
+reuse them on the documents they were chosen on. Scoring rules, the
+input-length policy, and how to read each column are in
+[docs/evaluation.md](docs/evaluation.md).
 
-```text
-rules    {"micro": {"tp": 0,  "fp": 0,  "fn": 54, "precision": 0.0,   "recall": 0.0,   "f1": 0.0}, ...}
-encoder  {"micro": {"tp": 38, "fp": 42, "fn": 16, "precision": 0.475, "recall": 0.704, "f1": 0.567}, ...}
-gliner   {"micro": {"tp": 39, "fp": 38, "fn": 15, "precision": 0.506, "recall": 0.722, "f1": 0.595}, ...}
-gliner25 {"micro": {"tp": 44, "fp": 35, "fn": 10, "precision": 0.557, "recall": 0.815, "f1": 0.662}, ...}
-```
+## Results recorded on 2026-10-22
 
-The importer uses [Few-NERD](https://huggingface.co/datasets/DFKI-SLT/few-nerd),
-config `supervised`, revision `205f3e9c9f3577ea2561d43f2f62dc249ab92d5b`: annotated
-English Wikipedia sentences with eight coarse and 66 fine entity categories, under
-CC-BY-SA-4.0. Keep attribution and share-alike terms when you redistribute derived
-data. The command downloads one split's Parquet shard (100 MB cap) and keeps the
-first N rows. It does not run remote dataset code.
+Thresholds were chosen on 500 validation sentences; scores are on 2,000 test
+sentences (3,779 gold spans) of Few-NERD's person/organization/location task.
+Apple M4, CPU, batch 1, 4 torch threads, one warmup, one repeat.
 
-To score more data, increase `--limit`. Use separate filenames and `--split train`
-or `--split validation` for training and development data. Tokens are joined with
-one ASCII space, so offsets refer to that sentence, not to the Wikipedia page. Only
-the coarse person, organization, and location categories are kept. This is a
-restricted task, not full Few-NERD scoring. Choose thresholds on development data
-before a final comparison on test data.
+| Run name | Label space | Threshold | P | R | F1 | F1 95% CI | Load ms | First call ms | p50 ms |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `rules` | fixed | - | 0.167 | 0.001 | 0.003 | 0.001-0.005 | 0 | 0 | 0.0 |
+| `encoder` | fixed | - | 0.635 | 0.747 | 0.687 | 0.666-0.705 | 1740 | 471 | 16.9 |
+| `gliner` | open | 0.7 | 0.613 | 0.665 | 0.638 | 0.618-0.659 | 3514 | 56 | 37.0 |
+| `gliner25` | open | 0.8 | 0.656 | 0.740 | 0.695 | 0.677-0.713 | 2429 | 31 | 24.5 |
+| `gliner-bi` | open | 0.5 | 0.729 | 0.675 | 0.701 | 0.681-0.719 | 1158 | 20 | 16.3 |
+| `gliner-bi-cached` | open | 0.5 | 0.729 | 0.675 | 0.701 | 0.681-0.719 | 1255 | 16 | 11.9 |
+| `gliner-multi` | open | 0.8 | 0.641 | 0.636 | 0.639 | 0.618-0.660 | 6718 | 43 | 39.7 |
+| `gliner2` | open | 0.95 | 0.687 | 0.649 | 0.668 | 0.651-0.686 | 3011 | 42 | 35.0 |
 
-Pinned candidates live in `ner_demo/models.py`:
+Every run attempted and scored all 2,000 documents. The bi-encoder, community
+GLiNER v2.5, and the fixed-label BERT baseline have overlapping 95% intervals,
+so this slice does not separate them; GLiNER v2.1 medium and multilingual v2.1
+score lower. The newest checkpoint, GLiNER2.5, does not have the highest F1
+here. Per-label scores, threshold sweeps, the 32-sentence check, ONNX FP32/INT8,
+label caching, the multilingual examples, and the article's historical numbers
+(kept separate from these) are in [docs/results.md](docs/results.md).
 
-| Adapter | Model and contract |
-| --- | --- |
-| `gliner` | `urchade/gliner_medium-v2.1`; tokenizer and backbone config pinned separately because the checkpoint omits them. |
-| `gliner25` | `gliner-community/gliner_small-v2.5`, maintained GLiNER span model; same adapter. |
-| `encoder` | [dslim/bert-base-NER](https://huggingface.co/dslim/bert-base-NER), fixed CoNLL labels; PER/ORG/LOC mapped, MISC dropped. |
-| `llm` | Optional structured extractive annotations, with the returned model identity and usage. |
+## Other workflows
 
-GLiNER v2.5 (`gliner-community`) and
-[Fastino GLiNER2.5](https://huggingface.co/fastino/gliner2.5-base-v1) are different
-model families. Fastino's model uses `gliner2.AutoExtractor`. Entity linking,
-normalization, classification, and relations are outside span F1.
+| Workflow | Command | Details |
+| --- | --- | --- |
+| LLM annotations (paid, needs `--allow-paid` and `OPENAI_API_KEY`) | `uv run --extra teacher python -m ner_demo.teacher --allow-paid` | [docs/workflows.md](docs/workflows.md#llm-annotations-and-training-input-paid-opt-in) |
+| Reviewed annotations to GLiNER training files | `uv run --extra models python -m ner_demo.training artifacts/reviewed.jsonl` | [docs/workflows.md](docs/workflows.md#llm-annotations-and-training-input-paid-opt-in) |
+| ONNX FP32/INT8 parity check (`gliner` only) | `uv run --extra models --extra onnx python -m ner_demo.onnx_check --dataset artifacts/few-nerd-test.json --output artifacts/onnx-comparison` | [docs/workflows.md](docs/workflows.md#onnx-fp32-and-int8-validated-for-gliner-only) |
+| Streaming PII buffering | `uv run --extra models python -m ner_demo.streaming --download` | [docs/workflows.md](docs/workflows.md#streaming-pii-buffering) |
 
-### Scoring rules
+No command makes a paid request unless it is given `--allow-paid`. Never commit
+credentials, weights, datasets, or predictions.
 
-Each document has a unique `document_id`, `text`, and `entities`. An entity is:
-
-```json
-{"start": 0, "end": 4, "text": "John", "label": "person"}
-```
-
-* Offsets are Python Unicode character indices, half-open `[start,end)`.
-  `text[start:end]` must equal the entity text.
-* A match needs the same document ID, start, end, and label. Repeated mentions
-  count separately. The scorer supports nested spans; the model comparison uses
-  flat spans. Unknown labels and invalid spans cannot match.
-* An unmatched prediction is a false positive; an unmatched gold span is a false
-  negative. Duplicate predictions add false positives. Duplicate gold spans,
-  duplicate result IDs, and extra result IDs reject the run.
-* Missing, failed, and skipped documents stay in the gold denominator. Headline
-  metrics are withheld unless every document was scored.
-* Micro metrics sum counts. Macro metrics average over all requested labels,
-  including labels with no gold spans.
-* Batch size is one and the device is CPU by default. Threshold, labels, warmups,
-  repetitions, package versions, checkpoint revisions, and raw predictions are
-  saved. Failed calls do not enter p50/p95 latency. Inputs over GLiNER's word limit
-  or 512 subwords (label prompt included) fail; nothing is truncated.
-
-## Teacher annotations and training input
-
-The teacher sends one request with a strict JSON Schema. It checks offsets, labels,
-source text, and duplicates, and saves rejected annotations with reasons. It saves
-the requested and returned model, prompt, settings, and usage. Records start
-unreviewed.
+## Tests
 
 ```sh
-cp .env.example .env
-# Set OPENAI_API_KEY; optional OPENAI_BASE_URL changes the endpoint.
-uv run --all-extras python -m ner_demo.teacher --allow-paid
+uv run python -m unittest discover -s tests -v       # offline contract tests
+NER_LOCAL_CHECKS=1 HF_HUB_OFFLINE=1 uv run --all-extras \
+  python -m unittest tests.test_real_models -v        # real pinned weights, opt-in
 ```
 
-The default model is `gpt-5.4-mini`, chosen for cost, not for NER accuracy. The
-command makes at most one paid request, with no retries and at most 2048 output
-tokens; see the provider's price page. It writes
-`artifacts/teacher_annotations.jsonl`. Paid evaluation is also opt-in, capped at
-32 documents of 4000 characters and one repetition:
+The offline tests use fakes, synthetic documents, and a mock HTTP transport
+through the real OpenAI SDK; CI runs them with ruff, the package build, and a
+smoke run of the built wheel on Python 3.11 and 3.14. The real-model tests load
+cached checkpoints and never download or call a paid API.
 
-```sh
-uv run --all-extras python -m ner_demo.evaluate --models llm \
-  --allow-paid --repeats 1 --warmups 0
-```
+## Contributing and license
 
-Review the source and annotations, resolve rejected entries, and set
-`reviewed: true`, a nonempty `reviewer`, `status: "ok"`, and a `split` (`train`,
-`development`, or `test`) in each JSONL record. Keep `source_sha256` intact. Then
-convert the reviewed file:
-
-```sh
-uv run --all-extras python -m ner_demo.training artifacts/reviewed.jsonl
-```
-
-This writes `artifacts/training/train.json`, `development.json`, and `test.json`
-in GLiNER's training format (`tokenized_text` plus `ner` triples with inclusive
-token ends). Every row passes through GLiNER's `SpanDataCollator`. Boundaries must
-align with GLiNER's word splitter. Duplicate IDs, identical texts across splits,
-unresolved rejections, and truncation fail. Pass the train and development files
-to a GLiNER fine-tuning run and keep test for the final evaluation. The converter
-does not train a model.
-
-## ONNX packages and INT8
-
-```sh
-uv run --all-extras python -m ner_demo.onnx_check \
-  --dataset artifacts/few-nerd-test.json --output artifacts/onnx-comparison
-```
-
-The output directory must be new; `--reuse` checks existing packages. The command
-exports an FP32 package, quantizes a copy to INT8, checks each graph, config,
-tokenizer, and external weights, and loads both through GLiNER's ONNX Runtime path.
-PyTorch, FP32, and INT8 run on the same inputs, labels, threshold, and batch size.
-`comparison.json` holds span differences, per-label recall and F1, latencies, and
-package sizes. The command fails when FP32 spans differ from PyTorch, or when INT8
-micro recall is more than 0.02 below PyTorch.
-
-INT8 uses dynamic quantization of `MatMul`, `Gemm`, and the embedding `Gather`, and
-keeps the twelve DeBERTa FFN down-projections (`layer.N/output/dense`) in FP32.
-Quantizing only those twelve layers already makes the model return no entities. Example output on the
-32 test sentences (Apple M5 Max, ONNX Runtime 1.24.4):
-
-```text
-{"package_bytes": {"fp32": 790362476, "int8": 353299069},
- "micro_recall": {"pytorch": 0.722, "fp32": 0.722, "int8": 0.722},
- "differing_documents": {"fp32": 0, "int8": 4}}
-```
-
-| Path | Package | p50 latency | Micro precision | Micro recall |
-| --- | --- | --- | --- | --- |
-| PyTorch | - | 64-66 ms | 0.506 | 0.722 |
-| ONNX FP32 | 790 MB | 16-19 ms | 0.506 | 0.722 |
-| ONNX INT8 | 353 MB | 13-15 ms | 0.487 | 0.722 |
-
-INT8 changed the spans in 4 of 32 documents and added 3 false positives. Check
-per-label recall on your own data before you deploy it. See
-[ONNX Runtime quantization](https://onnxruntime.ai/docs/performance/model-optimizations/quantization.html).
-
-## Streaming PII
-
-[GLiNER Streaming PII](https://huggingface.co/knowledgator/gliner-stream-pii-v1.0)
-has a session API that returns offsets into the accumulated text. Its checkpoint is
-pinned separately. This demo keeps labels fixed and gives each session its own ID.
-
-```sh
-uv run --all-extras python -m ner_demo.streaming --download
-```
-
-`BufferedPII` holds all text until a final full-text detection pass, then releases
-it with detected characters masked and clears the session. Exit, exceptions,
-cancellation, and overflow also clear buffered text and model state. The
-16,000-character cap limits input storage, not model memory. Release delay
-includes the whole input and the final inference. A shorter delay needs its own
-tested policy: a fixed lookbehind cannot protect arbitrarily long entities.
-Detector misses can still leak PII. The tests check buffering behavior, not
-privacy recall. Do not mix character-level leakage metrics with document NER F1.
-
-## Optional integration checks
-
-```sh
-NER_LOCAL_CHECKS=1 HF_HUB_OFFLINE=1 uv run --all-extras python -m unittest discover -s tests -v
-```
-
-These checks load cached GLiNER weights and test collator alignment and truncation
-rejection. Normal tests use synthetic fixtures and a mock HTTP transport through
-the real OpenAI SDK. Downloads and paid inference never run in normal tests.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, required checks, and how to add
+an adapter or evaluation data, and [CHANGELOG.md](CHANGELOG.md) for release
+notes. The code is MIT-licensed ([LICENSE](LICENSE)). Few-NERD and every model
+checkpoint keep their own licenses.
