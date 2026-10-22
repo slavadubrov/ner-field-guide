@@ -80,11 +80,20 @@ def evaluate(documents, labels, factory, repeats=3, warmups=1):
                 try:
                     prediction = runner(doc["text"])
                     if isinstance(prediction, dict):
+                        # An LLM record that finished but had bad spans is scored
+                        # like any adapter output: the rejected spans reach the
+                        # scorer as false positives. Refusals, truncated output,
+                        # and API errors (no span attached) fail the document.
                         row["provenance"] = prediction
-                        row["entities"] = prediction["entities"]
-                        row["status"] = (
-                            "ok" if prediction["status"] == "ok" else "error"
+                        spans = [
+                            r["entity"] for r in prediction["rejected"] if "entity" in r
+                        ]
+                        finished = prediction["status"] == "ok" or (
+                            prediction["status"] == "invalid"
+                            and len(spans) == len(prediction["rejected"])
                         )
+                        row["entities"] = prediction["entities"] + spans
+                        row["status"] = "ok" if finished else "error"
                     else:
                         row["entities"] = prediction
                         row["status"] = "ok"

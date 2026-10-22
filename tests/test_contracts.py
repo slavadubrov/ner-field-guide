@@ -133,6 +133,24 @@ class Contracts(unittest.TestCase):
         )
         self.assertEqual(result["initialization_error"], "ZeroDivisionError")
 
+    def test_llm_records_are_scored_per_span(self):
+        doc = smoke_documents()[0]  # "John met John."
+        good, bad = doc["entities"][0], dict(doc["entities"][1], start=8)
+
+        def scored(record):
+            run = evaluate([doc], LABELS, lambda: lambda text: record, 1, 0)
+            return run["runs"][0]["metrics"]
+
+        # A miscounted offset costs one false positive, not the whole document.
+        rejected = [dict(entity=bad, reason="span text does not match source")]
+        m = scored(dict(status="invalid", entities=[good], rejected=rejected))
+        self.assertEqual([m["micro"][k] for k in ("tp", "fp", "fn")], [1, 1, 1])
+        self.assertEqual((m["completed_documents"], m["valid_documents"]), (1, 0))
+        # A truncated generation still fails the document.
+        rejected = [dict(reason="incomplete generation", finish_status="length")]
+        m = scored(dict(status="invalid", entities=[], rejected=rejected))
+        self.assertEqual(m["failed_documents"], 1)
+
     def test_teacher_rejects_ambiguity_and_partial_output(self):
         text = "John met John"
         cases = [
