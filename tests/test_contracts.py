@@ -1,17 +1,35 @@
-"""Offline regressions for defects that previously produced false evidence."""
+"""Offline contract tests: fakes and mocks only, no weights or paid calls.
 
+Real-model checks are opt-in and live in test_real_models.py.
+"""
+
+import contextlib
 import copy
+import io
 import json
+import re
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest import mock
 
-from ner_demo.core import LABELS, digest, score, smoke_documents, validate_span
-from ner_demo.data import convert_row
+from ner_demo import evaluate as evaluation
+from ner_demo.core import (
+    LABELS,
+    digest,
+    example_documents,
+    f1_interval,
+    score,
+    smoke_documents,
+    validate_documents,
+    validate_span,
+)
+from ner_demo.data import convert_row, select
 from ner_demo.evaluate import evaluate
 from ner_demo.streaming import BufferedPII
-from ner_demo.teacher import annotate, validate_annotation
+from ner_demo.teacher import annotate, locate, validate_annotation
 from ner_demo.training import convert_reviewed
 
 
@@ -33,6 +51,33 @@ class Contracts(unittest.TestCase):
         wrong = dict(docs[0]["entities"][0], start=1, end=5)
         m = score(docs[:1], [row(docs[0], [wrong])], LABELS)
         self.assertEqual((m["micro"]["fp"], m["micro"]["fn"]), (1, 2))
+
+    def test_document_counts(self):
+        docs = smoke_documents()
+        m = score(docs, [row(docs[0]), row(docs[1], [], "error")], LABELS)
+        self.assertEqual(
+            [m[f"{k}_documents"] for k in ("planned", "attempted", "completed")],
+            [3, 2, 1],
+        )
+        self.assertEqual((m["failed_documents"], m["missing_documents"]), (1, 1))
+        self.assertEqual(m["valid_documents"], 1)
+        self.assertIsNone(m["headline"])
+
+    def test_f1_interval_brackets_the_point_estimate(self):
+        docs = smoke_documents()  # includes a document with no entities
+        self.assertEqual(f1_interval(docs, [row(d) for d in docs], LABELS), (1, 1))
+        partial = [row(docs[0], docs[0]["entities"][:1]), row(docs[1])]
+        low, high = f1_interval(docs, partial, LABELS)
+        self.assertLessEqual(low, score(docs, partial, LABELS)["micro"]["f1"])
+        self.assertLessEqual(score(docs, partial, LABELS)["micro"]["f1"], high)
+        self.assertEqual(f1_interval(docs, partial, LABELS), (low, high))
+        self.assertIsNone(f1_interval(docs[2:], [row(docs[2])], LABELS))
+
+    def test_examples_have_exact_offsets(self):
+        docs = example_documents()
+        self.assertEqual(len(validate_documents(docs, LABELS)), 3)
+        russian = docs[2]
+        self.assertEqual(russian["text"][34:41], "Мюнхене")
 
     def test_duplicates_extra_ids_and_unknown_labels(self):
         doc = smoke_documents()[0]
@@ -80,24 +125,61 @@ class Contracts(unittest.TestCase):
         self.assertIsNone(result["runs"][0]["metrics"]["headline"])
         self.assertNotIn("private source", json.dumps(result))
         result = evaluate(smoke_documents(), LABELS, lambda: 1 / 0)
-        self.assertEqual(result["runs"][0]["metrics"]["completion"], 0)
-
-    def test_teacher_rejects_ambiguity_and_partial_output(self):
-        text = "John met John"
-        cases = [
-            {"entities": [{"text": "John", "label": "person"}]},
-            {"entities": [dict(start=0, end=4, text="Jane", label="person")]},
-            {"entities": [dict(start=0, end=4, text="John", label="alien")]},
-        ]
-        for payload in cases:
-            self.assertTrue(validate_annotation(text, payload, LABELS, "stop")[1])
-        self.assertTrue(
-            validate_annotation(text, {"entities": []}, LABELS, "length")[1]
+        metrics = result["runs"][0]["metrics"]
+        self.assertEqual(metrics["completion"], 0)
+        # A model that never loaded was never called: missing, not failed.
+        self.assertEqual(
+            (metrics["attempted_documents"], metrics["missing_documents"]), (0, 3)
         )
+        self.assertEqual(result["initialization_error"], "ZeroDivisionError")
+
+    def test_llm_records_are_scored_per_span(self):
+        doc = smoke_documents()[0]  # "John met John."
+        good, bad = doc["entities"][0], dict(text="John", occurrence=3, label="person")
+
+        def scored(record):
+            run = evaluate([doc], LABELS, lambda: lambda text: record, 1, 0)
+            return run["runs"][0]["metrics"]
+
+        # An unresolvable quote costs one false positive, not the whole document.
+        rejected = [dict(entity=bad, reason="quoted occurrence not found in source")]
+        m = scored(dict(status="invalid", entities=[good], rejected=rejected))
+        self.assertEqual([m["micro"][k] for k in ("tp", "fp", "fn")], [1, 1, 1])
+        self.assertEqual((m["completed_documents"], m["valid_documents"]), (1, 0))
+        # A truncated generation still fails the document.
+        rejected = [dict(reason="incomplete generation", finish_status="length")]
+        m = scored(dict(status="invalid", entities=[], rejected=rejected))
+        self.assertEqual(m["failed_documents"], 1)
+
+    def test_teacher_resolves_quotes_without_guessing(self):
+        text = "John met John in Johnstown."
+
+        def run(*entities, finish="stop"):
+            payload = {"entities": list(entities)}
+            return validate_annotation(text, payload, LABELS, finish)
+
+        john = dict(text="John", occurrence=1, label="person")
+        accepted, rejected = run(john, dict(john, occurrence=2))
+        self.assertEqual([(e["start"], e["end"]) for e in accepted], [(0, 4), (9, 13)])
+        self.assertFalse(rejected)
+        for entity in [
+            dict(john, occurrence=3),  # "Johnstown" is not a third "John"
+            dict(john, text="Jane"),
+            dict(john, label="alien"),
+            dict(text="John", label="person"),
+            dict(start=0, end=4, text="John", label="person"),  # offsets, no quote
+        ]:
+            self.assertTrue(run(entity)[1], entity)
+        accepted, rejected = run(john, john)
+        self.assertEqual(
+            (len(accepted), rejected[0]["reason"]), (1, "duplicate occurrence")
+        )
+        self.assertTrue(run(finish="length")[1])
+        self.assertEqual(locate("🙂 Zoë and Zoë", "Zoë", 2), (10, 13))
 
     def test_real_sdk_request_and_provenance(self):
         try:
-            import httpx
+            import httpx2
             from openai import OpenAI
         except ImportError:
             self.skipTest("install teacher extra to verify real SDK serialization")
@@ -105,7 +187,7 @@ class Contracts(unittest.TestCase):
 
         def respond(request):
             requests.append(json.loads(request.content))
-            return httpx.Response(
+            return httpx2.Response(
                 200,
                 json={
                     "id": "test",
@@ -132,7 +214,7 @@ class Contracts(unittest.TestCase):
 
         with OpenAI(
             api_key="test-placeholder",
-            http_client=httpx.Client(transport=httpx.MockTransport(respond)),
+            http_client=httpx2.Client(transport=httpx2.MockTransport(respond)),
         ) as client:
             result = annotate(client, smoke_documents()[2])
         self.assertEqual(result["actual_model"], "returned-snapshot")
@@ -140,7 +222,32 @@ class Contracts(unittest.TestCase):
         self.assertFalse(result["reviewed"])
         self.assertEqual(requests[0]["response_format"]["type"], "json_schema")
         self.assertEqual(requests[0]["reasoning_effort"], "none")
+        schema = requests[0]["response_format"]["json_schema"]["schema"]
+        item = schema["properties"]["entities"]["items"]  # quotes, not offsets
+        self.assertEqual(item["required"], ["text", "occurrence", "label"])
         self.assertNotIn("temperature", requests[0])
+
+        def no_credits(request):
+            error = dict(
+                message="You have no credits remaining.",
+                type="insufficient_quota",
+                param=None,
+                code="credit_balance_exhausted",
+            )
+            return httpx2.Response(429, json={"error": error})
+
+        transport = httpx2.MockTransport(no_credits)
+        with OpenAI(
+            api_key="test-placeholder",
+            max_retries=0,
+            http_client=httpx2.Client(transport=transport),
+        ) as client:
+            refused = annotate(client, smoke_documents()[2])
+        self.assertEqual(refused["status"], "error")
+        self.assertEqual(
+            refused["rejected"],
+            [{"reason": "RateLimitError: credit_balance_exhausted"}],
+        )
         failed = annotate(
             SimpleNamespace(
                 chat=SimpleNamespace(
@@ -167,6 +274,16 @@ class Contracts(unittest.TestCase):
         self.assertEqual(doc["entities"][1]["text"], "New York")
         with self.assertRaises(ValueError):
             convert_row(dict(tokens=["a"], ner_tags=[], fine_ner_tags=[]), "test", 0)
+
+    def test_dataset_selection_skips_texts_from_other_splits(self):
+        rows = [
+            dict(tokens=[word], ner_tags=[0], fine_ner_tags=[0])
+            for word in ["shared", "a", "shared", "b", "c"]
+        ]
+        docs, skipped = select(rows, "test", 2, exclude={"shared"})
+        self.assertEqual([d["text"] for d in docs], ["a", "b"])
+        self.assertEqual(skipped, 2)
+        self.assertEqual(docs[1]["document_id"], "few-nerd:supervised:test:3")
 
     def test_training_rejects_unreviewed_and_leaks(self):
         import re
@@ -215,6 +332,8 @@ class Contracts(unittest.TestCase):
 
 
 class FakeStream:
+    """Mimics the session API, including its skip of whitespace-only chunks."""
+
     def __init__(self):
         self.sessions, self.cleared = {}, []
 
@@ -226,6 +345,8 @@ class FakeStream:
 
     def inference(self, chunks, labels, session_id, threshold):
         key = session_id[0]
+        if not chunks[0].strip():
+            return [[]]
         self.sessions[key] = self.sessions.get(key, "") + chunks[0]
         return [self.predict_entities(self.sessions[key], labels, threshold)]
 
@@ -247,6 +368,29 @@ class Streaming(unittest.TestCase):
         self.assertFalse(model.sessions)
         self.assertEqual(len(model.cleared), 2)
 
+    def test_whitespace_chunk_keeps_offsets_aligned(self):
+        # Sent alone, " " would be skipped and later offsets would shift by one.
+        model = FakeStream()
+        with BufferedPII(model, ["person"]) as session:
+            for chunk in ["Hi", " ", "Jane Doe", "\n"]:
+                self.assertEqual(session.push(chunk), "")
+            self.assertEqual(session.finish(), "Hi ████████\n")
+        self.assertFalse(model.sessions)
+
+    def test_word_limit_fails_closed(self):
+        # Few tokens but many words: the final GLiNER pass would truncate.
+        model = FakeStream()
+        model.config = SimpleNamespace(max_len=5)
+        model.data_processor = SimpleNamespace(
+            words_splitter=lambda text: re.finditer(r"\w+|\S", text),
+            transformer_tokenizer=SimpleNamespace(encode=lambda text: [0]),
+        )
+        session = BufferedPII(model, ["person"])
+        with self.assertRaisesRegex(ValueError, "word limit"):
+            session.push("a.a.a. Jane Doe")
+        self.assertTrue(session.closed)
+        self.assertEqual((session.text, session.pending), ("", ""))
+
     def test_error_cancel_and_overflow_cleanup(self):
         for error in (RuntimeError, KeyboardInterrupt):
             model = FakeStream()
@@ -264,41 +408,124 @@ class Streaming(unittest.TestCase):
         self.assertEqual(len(model.cleared), 1)
 
 
-@unittest.skipUnless(
-    __import__("os").getenv("NER_LOCAL_CHECKS") == "1",
-    "opt-in cached model integration",
-)
-class LocalIntegration(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        from ner_demo.models import load_gliner
+def fake_runner(name, labels, download, device, threshold):
+    """Predicts one extra span below 0.5 and drops one span above 0.6."""
+    if name == "broken":
+        raise OSError("checkpoint not in the local cache")
+    entities = {
+        "John met John.": [
+            dict(start=0, end=4, text="John", label="person", score=0.9),
+            dict(start=9, end=13, text="John", label="person", score=0.55),
+            dict(start=5, end=8, text="met", label="person", score=0.4),
+        ]
+    }
+    return lambda text: [e for e in entities.get(text, []) if e["score"] >= threshold]
 
-        cls.model = load_gliner()
 
-    def test_actual_reader_and_positive_positions(self):
-        from ner_demo.training import check_collator
+class EvaluationProtocol(unittest.TestCase):
+    """CLI rules that keep threshold choice off the test documents."""
 
-        docs = smoke_documents()
-        for index, doc in enumerate(docs):
-            doc.update(
-                reviewed=True,
-                reviewer="synthetic regression fixture",
-                status="ok",
-                rejected=[],
-                split=["train", "development", "test"][index],
-                source_sha256=digest(doc["text"]),
+    def run_cli(self, argv):
+        gliner = evaluation.MODELS["gliner"]
+        with (
+            mock.patch.object(sys, "argv", ["evaluate", *argv.split()]),
+            mock.patch.object(evaluation, "make_runner", fake_runner),
+            mock.patch.dict(evaluation.MODELS, fake=gliner, broken=gliner),
+            contextlib.redirect_stdout(io.StringIO()),
+            contextlib.redirect_stderr(io.StringIO()),
+        ):
+            evaluation.main()
+
+    def bundle(self, folder, name, documents, split):
+        path = Path(folder, name)
+        manifest = dict(split=split, labels=LABELS, documents_sha256=digest(documents))
+        path.write_text(json.dumps(dict(manifest=manifest, documents=documents)))
+        return path
+
+    def test_sweep_selects_on_development_data_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dev = self.bundle(tmp, "dev.json", smoke_documents()[:1], "validation")
+            test = self.bundle(tmp, "test.json", smoke_documents()[1:], "test")
+            sweep, out = Path(tmp, "sweep.json"), Path(tmp, "out.json")
+            self.run_cli(
+                f"--dataset {dev} --models fake rules broken "
+                f"--sweep 0.3 0.5 0.7 --output {sweep}"
             )
-        self.assertEqual(
-            check_collator(convert_reviewed(docs, self.model), self.model), 3
+            selected = json.loads(sweep.read_text())
+            # "broken" never loaded, so it exports no threshold.
+            self.assertEqual(selected["selected_thresholds"], {"fake": 0.5})
+            self.assertEqual(len(selected["results"]["fake"]["sweep"]), 3)
+            self.run_cli(
+                f"--dataset {test} --models fake --thresholds-from {sweep} "
+                f"--output {out}"
+            )
+            models = json.loads(out.read_text())["manifest"]["models"]
+            self.assertEqual(models["fake"]["threshold"], 0.5)
+            refusals = [
+                # Thresholds may not be chosen on the test split ...
+                f"--dataset {test} --sweep 0.5",
+                # ... nor reused on the documents they were chosen on ...
+                f"--dataset {dev} --thresholds-from {sweep}",
+                # ... and every thresholded model needs a development threshold.
+                f"--dataset {test} --models broken --thresholds-from {sweep}",
+            ]
+            for argv in refusals:
+                with self.assertRaises(SystemExit):
+                    self.run_cli(f"{argv} --output {out}")
+
+    def test_provenance_without_git(self):
+        with mock.patch.object(evaluation.subprocess, "run", side_effect=OSError):
+            state = evaluation.git_state()
+        self.assertEqual(state, dict(git_commit=None, git_dirty=None))
+
+
+class Adapters(unittest.TestCase):
+    def test_gliner2_keeps_repeats_and_native_scores(self):
+        from ner_demo.models import gliner2_predict
+
+        calls = []
+
+        def extract_entities(text, labels, **options):
+            calls.append(options)
+            found = [
+                dict(text="John", start=0, end=4, confidence=0.9),
+                dict(text="John", start=9, end=13, confidence=0.8),
+            ]
+            return {"entities": {"person": found, "location": []}}
+
+        model = SimpleNamespace(
+            config=SimpleNamespace(max_len=8),
+            processor=SimpleNamespace(
+                word_splitter=lambda text: re.finditer(r"\w+|\S", text)
+            ),
+            extract_entities=extract_entities,
         )
+        spans = gliner2_predict(model, "John met John.", ["person", "location"], 0.4)
+        self.assertEqual(
+            [(e["start"], e["score"]) for e in spans], [(0, 0.9), (9, 0.8)]
+        )
+        self.assertTrue(calls[0]["include_spans"] and calls[0]["include_confidence"])
+        self.assertEqual(calls[0]["threshold"], 0.4)
+        with self.assertRaisesRegex(ValueError, "word limit"):
+            gliner2_predict(
+                model, "one two three four five six seven eight nine", ["person"]
+            )
 
-    def test_length_rejection(self):
-        from ner_demo.models import gliner_predict
+    def test_registry_table_is_in_readme(self):
+        from ner_demo.registry import MODELS, table
 
-        with self.assertRaises(ValueError):
-            gliner_predict(self.model, "word " * 1000, LABELS)
-        with self.assertRaises(ValueError):
-            gliner_predict(self.model, "John", ["unusually long label " * 1000])
+        for name, entry in MODELS.items():
+            revision = entry["revision"]
+            self.assertTrue(
+                revision is None or re.fullmatch(r"[0-9a-f]{40}", revision), name
+            )
+            self.assertIn(
+                entry["status"], {"validated", "contract", "implemented", "blocked"}
+            )
+        readme = (Path(__file__).parents[1] / "README.md").read_text()
+        self.assertTrue(
+            table() in readme, "stale README table: python -m ner_demo.registry"
+        )
 
 
 if __name__ == "__main__":

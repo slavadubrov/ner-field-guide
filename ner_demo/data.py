@@ -1,12 +1,13 @@
 """Import a bounded, pinned Few-NERD supervised slice without dataset scripts."""
 
 import argparse
+import hashlib
 import io
 import json
 import urllib.request
 from pathlib import Path
 
-from ner_demo.core import LABELS, digest, validate_documents
+from ner_demo.core import LABELS, digest, load_bundle, validate_documents
 
 REPO = "DFKI-SLT/few-nerd"
 REVISION = "205f3e9c9f3577ea2561d43f2f62dc249ab92d5b"
@@ -45,6 +46,20 @@ def convert_row(row, split, index):
     )
 
 
+def select(rows, split, limit, exclude=frozenset()):
+    """First `limit` converted rows whose text is not in `exclude`."""
+    docs, skipped = [], 0
+    for index, row in enumerate(rows):
+        if len(docs) == limit:
+            break
+        doc = convert_row(row, split, index)
+        if doc["text"] in exclude:
+            skipped += 1
+        else:
+            docs.append(doc)
+    return docs, skipped
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -52,11 +67,22 @@ def main():
     )
     parser.add_argument("--limit", type=int, default=32)
     parser.add_argument(
-        "--output", type=Path, default=Path("artifacts/few-nerd-test.json")
+        "--output", type=Path, help="default: artifacts/few-nerd-<split>.json"
+    )
+    parser.add_argument(
+        "--exclude",
+        type=Path,
+        nargs="+",
+        default=[],
+        metavar="BUNDLE",
+        help="skip rows whose text occurs in these imported files; Few-NERD "
+        "repeats some sentences across splits",
     )
     args = parser.parse_args()
     if args.limit < 1:
         parser.error("limit must be positive")
+    # One file per split, so a validation import cannot overwrite the test file.
+    args.output = args.output or Path(f"artifacts/few-nerd-{args.split}.json")
     import pyarrow.parquet as pq
 
     url = f"https://huggingface.co/datasets/{REPO}/resolve/{REVISION}/supervised/{args.split}-00000-of-00001.parquet"
@@ -64,11 +90,14 @@ def main():
         raw = response.read(100_000_001)
     if len(raw) > 100_000_000:
         raise ValueError("dataset file exceeds 100 MB download cap")
-    table = pq.read_table(io.BytesIO(raw)).slice(0, args.limit)
-    docs = [convert_row(row, args.split, i) for i, row in enumerate(table.to_pylist())]
+    table = pq.read_table(io.BytesIO(raw))
+    bundles = [load_bundle(path) for path in args.exclude]
+    exclude = {d["text"] for bundle in bundles for d in bundle["documents"]}
+    # Lazy, so selection stops after `limit` kept rows however many are skipped.
+    batches = table.to_batches(max_chunksize=1000)
+    rows = (row for batch in batches for row in batch.to_pylist())
+    docs, skipped = select(rows, args.split, args.limit, exclude)
     validate_documents(docs, LABELS)
-    import hashlib
-
     manifest = dict(
         dataset=REPO,
         revision=REVISION,
@@ -79,8 +108,18 @@ def main():
         source_sha256=hashlib.sha256(raw).hexdigest(),
         labels=LABELS,
         label_mapping=MAPPING,
-        selection="first N rows in pinned split",
+        selection="first N rows in pinned split"
+        + (", skipping rows whose text is in `excluded`" if exclude else ""),
         limit=args.limit,
+        excluded=[
+            dict(
+                file=str(path), documents_sha256=bundle["manifest"]["documents_sha256"]
+            )
+            for path, bundle in zip(args.exclude, bundles)
+        ],
+        excluded_rows=skipped,
+        split_rows=table.num_rows,
+        documents=len(docs),
         text_construction="tokens joined by one ASCII space; not original Wikipedia offsets",
         documents_sha256=digest(docs),
     )

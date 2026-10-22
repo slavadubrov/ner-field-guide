@@ -1,17 +1,20 @@
-"""Export complete packages and measure PyTorch/ONNX FP32/INT8 separately."""
+"""Export complete packages and measure PyTorch/ONNX FP32/INT8 separately.
+
+Validated only for the `gliner` registry entry (urchade/gliner_medium-v2.1,
+DeBERTa-v3). Other checkpoints need their own parity and recall check.
+"""
 
 import argparse
-import importlib.metadata
 import json
-import platform
 import re
 import shutil
 import time
 from pathlib import Path
 
-from ner_demo.core import LABELS, digest, smoke_documents
-from ner_demo.evaluate import evaluate
-from ner_demo.models import PINS, gliner_predict, load_gliner
+from ner_demo.core import LABELS, digest, load_bundle, smoke_documents
+from ner_demo.evaluate import environment, evaluate
+from ner_demo.models import gliner_predict, load_gliner
+from ner_demo.registry import MODELS
 
 # INT8 may lose at most this much micro recall against PyTorch (one span in 50).
 INT8_MAX_RECALL_DROP = 0.02
@@ -19,7 +22,6 @@ INT8_MAX_RECALL_DROP = 0.02
 
 def validate_package(path):
     import onnx
-    from transformers import AutoTokenizer
 
     path = Path(path)
     for name in (
@@ -41,6 +43,8 @@ def validate_package(path):
                 ):
                     raise ValueError("missing or unsafe ONNX external weights")
     onnx.checker.check_model(str(path / "model.onnx"))
+    from transformers import AutoTokenizer
+
     AutoTokenizer.from_pretrained(path, local_files_only=True)
     return sum(p.stat().st_size for p in path.rglob("*") if p.is_file())
 
@@ -152,10 +156,8 @@ def main():
     docs, labels = smoke_documents(), LABELS
     dataset_manifest = {"kind": "synthetic smoke only"}
     if args.dataset:
-        bundle = json.loads(args.dataset.read_text())
+        bundle = load_bundle(args.dataset)
         docs, labels = bundle["documents"], bundle["manifest"]["labels"]
-        if digest(docs) != bundle["manifest"]["documents_sha256"]:
-            raise ValueError("dataset hash mismatch")
         dataset_manifest = bundle["manifest"]
     results = {
         "pytorch": evaluate(
@@ -196,29 +198,24 @@ def main():
         name: min(run["metrics"]["micro"]["recall"] for run in result["runs"])
         for name, result in results.items()
     }
-    report = dict(
-        model=PINS["gliner"],
-        dataset=dataset_manifest,
-        documents_sha256=digest(docs),
-        labels=labels,
-        device="cpu",
-        batch_size=1,
-        threshold=0.5,
-        warmups=1,
-        repeats=3,
-        package_bytes=sizes,
-        platform=platform.platform(),
-        packages={
-            name: importlib.metadata.version(name)
-            for name in ["gliner", "torch", "transformers", "onnx", "onnxruntime"]
-        },
-        source_sha256=digest(
-            {p.name: p.read_text() for p in Path(__file__).parent.glob("*.py")}
-        ),
-        differing_documents=parity,
-        micro_recall=recall,
-        int8_max_recall_drop=INT8_MAX_RECALL_DROP,
-        results=results,
+    report = (
+        dict(
+            model=(MODELS["gliner"]["checkpoint"], MODELS["gliner"]["revision"]),
+            dataset=dataset_manifest,
+            documents_sha256=digest(docs),
+            labels=labels,
+            device="cpu",
+            batch_size=1,
+            threshold=0.5,
+            warmups=1,
+            repeats=3,
+            package_bytes=sizes,
+            differing_documents=parity,
+            micro_recall=recall,
+            int8_max_recall_drop=INT8_MAX_RECALL_DROP,
+            results=results,
+        )
+        | environment()
     )
     (args.output / "comparison.json").write_text(json.dumps(report, indent=2) + "\n")
     print(
