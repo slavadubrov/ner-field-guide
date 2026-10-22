@@ -161,9 +161,11 @@ checkpoints.
 - A failed call keeps the exception type and the provider's error code, for
   example `RateLimitError: credit_balance_exhausted`, but not the message, which
   can echo request text.
-- Not run in this repository: no paid request completed. Every paid path needs
-  `--allow-paid`; offline tests send the real SDK request through a mock HTTP
-  transport, including a quota error.
+- Run on 2026-10-22: one teacher request and the 32-sentence evaluation, about
+  USD 0.0014 in total. Exact-span F1 was 0.065 because the model miscounted the
+  character offsets of most spans; see [results](results.md#paid-llm-baseline-gpt-6-luna).
+  Every paid path needs `--allow-paid`; offline tests send the real SDK request
+  through a mock HTTP transport, including a quota error.
 
 ## Considered, not integrated
 

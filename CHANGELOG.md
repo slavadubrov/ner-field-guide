@@ -75,6 +75,10 @@ starts at 0.3.0.
   8,192-word limit passed the token check, and the final full-text pass silently
   kept only the first 8,192 words, so the tail was released without detection.
   Such sessions are now rejected before release.
+- Evaluation failed a whole LLM document when one span had bad offsets, so the
+  document's correct spans counted as false positives. Such spans are now scored
+  one by one, as for every other adapter; refusals, truncated output, and API
+  errors still fail the document.
 - Provenance recorded the git commit of whatever repository the caller was in
   (for an installed copy, often the user's own project), and the run crashed when
   `git` was not installed. The commit is now recorded only when this source file
@@ -116,6 +120,11 @@ Run on 2026-10-22 on an Apple M4 (10 logical CPUs, macOS 27.2), CPU only.
   comparisons, ONNX check, streaming demo, and both test suites. Counts,
   selected thresholds, and intervals matched the earlier run exactly.
 
+- Paid baseline, `gpt-6-luna`, 32 test sentences (33 requests with the teacher
+  check, about USD 0.0014): every request finished, but exact-span F1 was 0.065
+  (0.013-0.141) because 65 of the 70 returned spans had character offsets that did
+  not match their text.
+
 Full tables: [docs/results.md](docs/results.md).
 
 ### Known limitations
@@ -123,8 +132,12 @@ Full tables: [docs/results.md](docs/results.md).
 - All measurements come from one machine (Apple M4, CPU, batch 1) and one
   English Wikipedia dataset restricted to three entity types. The intervals cover
   document resampling only, not other data, labels, or hardware.
-- Not run: the paid OpenAI baseline (`gpt-6-luna`; no paid request completed),
-  GPU and MPS devices, and Linux or Windows hosts beyond CI's offline checks.
+- Not run: GPU and MPS devices, and Linux or Windows hosts beyond CI's offline
+  checks.
+- The LLM baseline asks the model for character offsets, and `gpt-6-luna`
+  miscounted most of them, so its exact-span score says more about offset
+  arithmetic than about entity recognition. Deriving offsets in code from a
+  returned quotation would avoid this; it is not implemented.
 - Inputs longer than a model's window are rejected; there is no windowing.
 - German and Russian support is checked with three functional sentences only; no
   multilingual accuracy was measured. Otter and GLiNER-X are not integrated; see

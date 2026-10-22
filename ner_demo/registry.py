@@ -177,8 +177,10 @@ MODELS = {
         extra="teacher",
         sources=["https://developers.openai.com/api/docs/models/gpt-6-luna"],
         verified=VERIFIED,
-        status="contract",
-        limitations="Paid; not run here. Offline tests use a mock HTTP transport.",
+        status="validated",
+        limitations="Paid; capped at 32 documents per run. The model writes the "
+        "character offsets itself, and most did not match their text "
+        "(docs/results.md).",
     ),
     "streaming": dict(
         family="GLiNER Streaming PII (Knowledgator)",

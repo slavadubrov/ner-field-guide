@@ -4,10 +4,12 @@ Every number on this page was produced on **2026-10-22** by the commands in the
 README, on one machine: Apple M4 (10 logical CPUs; torch used 4 threads), macOS
 27.2, CPU only, batch size 1, Python 3.13.3, `gliner` 0.2.29, `gliner2` 2.1.0,
 transformers 5.1.0, torch 2.11.0, ONNX Runtime 1.24.4. Models loaded offline
-(`HF_HUB_OFFLINE=1`) from the pinned revisions. The tables were produced by
-running the README commands in a fresh clone of commit `a85ffa3` (the outputs
-record `git_dirty: false`); an earlier run from the uncommitted working tree gave
-identical counts, thresholds, and intervals.
+(`HF_HUB_OFFLINE=1`) from the pinned revisions. The local-model tables were
+produced by running the README commands in a fresh clone of commit `a85ffa3` (the
+outputs record `git_dirty: false`); an earlier run from the uncommitted working
+tree gave identical counts, thresholds, and intervals. The paid LLM table was
+produced afterwards from a clean checkout of commit `5b3c7da` with `openai`
+3.36.1.
 
 The task is Few-NERD's three coarse types (person, organization, location) on
 English Wikipedia sentences. These results check the adapters under one set of
@@ -192,6 +194,43 @@ sizes and span differences match the article's run. Its latencies (PyTorch 64-66
 ms, FP32 16-19 ms, INT8 13-15 ms) were measured on an Apple M5 Max and are not
 comparable with this machine's.
 
+## Paid LLM baseline (`gpt-6-luna`)
+
+Run on 2026-10-22 against `api.openai.com` with the README command, on the same
+32 test sentences as the small configuration (the CLI caps the paid baseline at
+32 documents). Every request finished normally and the API reported the model as
+`gpt-6-luna`.
+
+Data: DFKI-SLT/few-nerd@205f3e9 split=test; 32 documents; labels: person, organization, location
+Run: Apple M4, 10 logical CPUs, torch threads -, device cpu, batch 1, 0 warmup, 1 repeats; git 5b3c7da
+Thresholds: fixed 0.5
+
+| Model | Checkpoint | Labels | Threshold | P | R | F1 | F1 95% CI | TP/FP/FN | Attempted | Scored | Failed | Missing | Load ms | Label cache ms | First call ms | p50 ms | p95 ms |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| llm | gpt-6-luna | open | - | 0.057 | 0.074 | 0.065 | 0.013-0.141 | 4/66/50 | 32 | 8 | 0 | 0 | 281 | - | - | 1841.5 | 3687.9 |
+
+| Per-label F1 | person | organization | location |
+| --- | --- | --- | --- |
+| llm | 0.080 | 0.034 | 0.100 |
+
+Scored = completed with only valid spans. Failed and missing documents stay in the denominator. F1 95% CI = document bootstrap, 1,000 resamples, the same resamples for every model. First call = warmup on the first document.
+
+The model recognized many of the right entities but miscounted their positions.
+It returned 70 spans; 5 had offsets that matched their text and 65 were rejected
+(63 because `text[start:end]` did not equal the returned text, 2 because the
+offsets were out of range). The text of all 65 rejected spans occurs in the
+sentence, and 40 of them name a gold entity with the gold label. The returned
+start was off by a median of 2 characters (range -27 to +52). The scorer does not
+search for the text: each rejected span is a false positive and marks its
+sentence as not scored, which is why only 8 of 32 sentences were scored. This
+F1 measures exact spans with model-written offsets, not entity recognition
+alone.
+
+Cost: 5,528 input and 1,681 output tokens, no reasoning tokens, no cache writes;
+about USD 0.0014 at the recorded price basis. The single `ner_demo.teacher`
+request used 157 input and 46 output tokens and had the same problem: "NVIDIA"
+matched, and "Arm" came back at characters 41-44 instead of 45-48.
+
 ## English, German, and Russian functional examples
 
 `python -m ner_demo.quickstart --model <name> --examples`: gold spans found out of
@@ -219,9 +258,6 @@ checkpoint. PII recall was not measured.
 
 ## Not run
 
-- The paid OpenAI baseline (`llm`, `gpt-6-luna`) and the teacher command: no paid
-  request completed, so there are no LLM results. Offline tests cover the request
-  and the response handling through the real SDK with a mock transport.
 - GPU or MPS devices, Linux or Windows hosts, batching other than 1, and inputs
   longer than one sentence.
 - Fine-tuning: the training converter was checked with GLiNER's real collator;
