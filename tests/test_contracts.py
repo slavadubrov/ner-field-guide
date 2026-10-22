@@ -29,7 +29,7 @@ from ner_demo.core import (
 from ner_demo.data import convert_row, select
 from ner_demo.evaluate import evaluate
 from ner_demo.streaming import BufferedPII
-from ner_demo.teacher import annotate, validate_annotation
+from ner_demo.teacher import annotate, locate, validate_annotation
 from ner_demo.training import convert_reviewed
 
 
@@ -135,14 +135,14 @@ class Contracts(unittest.TestCase):
 
     def test_llm_records_are_scored_per_span(self):
         doc = smoke_documents()[0]  # "John met John."
-        good, bad = doc["entities"][0], dict(doc["entities"][1], start=8)
+        good, bad = doc["entities"][0], dict(text="John", occurrence=3, label="person")
 
         def scored(record):
             run = evaluate([doc], LABELS, lambda: lambda text: record, 1, 0)
             return run["runs"][0]["metrics"]
 
-        # A miscounted offset costs one false positive, not the whole document.
-        rejected = [dict(entity=bad, reason="span text does not match source")]
+        # An unresolvable quote costs one false positive, not the whole document.
+        rejected = [dict(entity=bad, reason="quoted occurrence not found in source")]
         m = scored(dict(status="invalid", entities=[good], rejected=rejected))
         self.assertEqual([m["micro"][k] for k in ("tp", "fp", "fn")], [1, 1, 1])
         self.assertEqual((m["completed_documents"], m["valid_documents"]), (1, 0))
@@ -151,18 +151,31 @@ class Contracts(unittest.TestCase):
         m = scored(dict(status="invalid", entities=[], rejected=rejected))
         self.assertEqual(m["failed_documents"], 1)
 
-    def test_teacher_rejects_ambiguity_and_partial_output(self):
-        text = "John met John"
-        cases = [
-            {"entities": [{"text": "John", "label": "person"}]},
-            {"entities": [dict(start=0, end=4, text="Jane", label="person")]},
-            {"entities": [dict(start=0, end=4, text="John", label="alien")]},
-        ]
-        for payload in cases:
-            self.assertTrue(validate_annotation(text, payload, LABELS, "stop")[1])
-        self.assertTrue(
-            validate_annotation(text, {"entities": []}, LABELS, "length")[1]
+    def test_teacher_resolves_quotes_without_guessing(self):
+        text = "John met John in Johnstown."
+
+        def run(*entities, finish="stop"):
+            payload = {"entities": list(entities)}
+            return validate_annotation(text, payload, LABELS, finish)
+
+        john = dict(text="John", occurrence=1, label="person")
+        accepted, rejected = run(john, dict(john, occurrence=2))
+        self.assertEqual([(e["start"], e["end"]) for e in accepted], [(0, 4), (9, 13)])
+        self.assertFalse(rejected)
+        for entity in [
+            dict(john, occurrence=3),  # "Johnstown" is not a third "John"
+            dict(john, text="Jane"),
+            dict(john, label="alien"),
+            dict(text="John", label="person"),
+            dict(start=0, end=4, text="John", label="person"),  # offsets, no quote
+        ]:
+            self.assertTrue(run(entity)[1], entity)
+        accepted, rejected = run(john, john)
+        self.assertEqual(
+            (len(accepted), rejected[0]["reason"]), (1, "duplicate occurrence")
         )
+        self.assertTrue(run(finish="length")[1])
+        self.assertEqual(locate("🙂 Zoë and Zoë", "Zoë", 2), (10, 13))
 
     def test_real_sdk_request_and_provenance(self):
         try:
@@ -209,6 +222,9 @@ class Contracts(unittest.TestCase):
         self.assertFalse(result["reviewed"])
         self.assertEqual(requests[0]["response_format"]["type"], "json_schema")
         self.assertEqual(requests[0]["reasoning_effort"], "none")
+        schema = requests[0]["response_format"]["json_schema"]["schema"]
+        item = schema["properties"]["entities"]["items"]  # quotes, not offsets
+        self.assertEqual(item["required"], ["text", "occurrence", "label"])
         self.assertNotIn("temperature", requests[0])
 
         def no_credits(request):
