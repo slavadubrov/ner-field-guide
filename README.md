@@ -121,13 +121,13 @@ Apple M4, CPU, batch 1, 4 torch threads, one warmup, one repeat.
 | Run name | Label space | Threshold | P | R | F1 | F1 95% CI | Load ms | First call ms | p50 ms |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `rules` | fixed | - | 0.167 | 0.001 | 0.003 | 0.001-0.005 | 0 | 0 | 0.0 |
-| `encoder` | fixed | - | 0.635 | 0.747 | 0.687 | 0.666-0.705 | 1740 | 471 | 16.9 |
-| `gliner` | open | 0.7 | 0.613 | 0.665 | 0.638 | 0.618-0.659 | 3514 | 56 | 37.0 |
-| `gliner25` | open | 0.8 | 0.656 | 0.740 | 0.695 | 0.677-0.713 | 2429 | 31 | 24.5 |
-| `gliner-bi` | open | 0.5 | 0.729 | 0.675 | 0.701 | 0.681-0.719 | 1158 | 20 | 16.3 |
-| `gliner-bi-cached` | open | 0.5 | 0.729 | 0.675 | 0.701 | 0.681-0.719 | 1255 | 16 | 11.9 |
-| `gliner-multi` | open | 0.8 | 0.641 | 0.636 | 0.639 | 0.618-0.660 | 6718 | 43 | 39.7 |
-| `gliner2` | open | 0.95 | 0.687 | 0.649 | 0.668 | 0.651-0.686 | 3011 | 42 | 35.0 |
+| `encoder` | fixed | - | 0.635 | 0.747 | 0.687 | 0.666-0.705 | 1571 | 476 | 16.7 |
+| `gliner` | open | 0.7 | 0.613 | 0.665 | 0.638 | 0.618-0.659 | 3692 | 57 | 37.1 |
+| `gliner25` | open | 0.8 | 0.656 | 0.740 | 0.695 | 0.677-0.713 | 2425 | 31 | 24.8 |
+| `gliner-bi` | open | 0.5 | 0.729 | 0.675 | 0.701 | 0.681-0.719 | 1134 | 20 | 16.3 |
+| `gliner-bi-cached` | open | 0.5 | 0.729 | 0.675 | 0.701 | 0.681-0.719 | 1280 | 15 | 11.9 |
+| `gliner-multi` | open | 0.8 | 0.641 | 0.636 | 0.639 | 0.618-0.660 | 6270 | 43 | 39.7 |
+| `gliner2` | open | 0.95 | 0.687 | 0.649 | 0.668 | 0.651-0.686 | 2939 | 43 | 35.1 |
 
 Every run attempted and scored all 2,000 documents. The bi-encoder, community
 GLiNER v2.5, and the fixed-label BERT baseline have overlapping 95% intervals,

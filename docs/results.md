@@ -4,9 +4,10 @@ Every number on this page was produced on **2026-10-22** by the commands in the
 README, on one machine: Apple M4 (10 logical CPUs; torch used 4 threads), macOS
 27.2, CPU only, batch size 1, Python 3.13.3, `gliner` 0.2.29, `gliner2` 2.1.0,
 transformers 5.1.0, torch 2.11.0, ONNX Runtime 1.24.4. Models loaded offline
-(`HF_HUB_OFFLINE=1`) from the pinned revisions. The runs were made from the
-working tree that became release 0.3.0, so the outputs record `git_dirty: true`
-against the previous commit.
+(`HF_HUB_OFFLINE=1`) from the pinned revisions. The tables were produced by
+running the README commands in a fresh clone of commit `a85ffa3` (the outputs
+record `git_dirty: false`); an earlier run from the uncommitted working tree gave
+identical counts, thresholds, and intervals.
 
 The task is Few-NERD's three coarse types (person, organization, location) on
 English Wikipedia sentences. These results check the adapters under one set of
@@ -18,17 +19,17 @@ scores are copied here.
 ### Thresholds chosen on 500 validation sentences
 
 Data: DFKI-SLT/few-nerd@205f3e9 split=validation; 500 documents; labels: person, organization, location
-Run: Apple M4, 10 logical CPUs, torch threads 4, device cpu, batch 1, 0 warmup, 1 repeats; git 18c9b92 (dirty)
+Run: Apple M4, 10 logical CPUs, torch threads 4, device cpu, batch 1, 0 warmup, 1 repeats; git a85ffa3
 Thresholds: development sweep: 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.97
 
 | Model | Checkpoint | Labels | Threshold | P | R | F1 | F1 95% CI | TP/FP/FN | Attempted | Scored | Failed | Missing | Load ms | Label cache ms | First call ms | p50 ms | p95 ms |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| gliner | urchade/gliner_medium-v2.1@40ec419 | open | 0.70 | 0.638 | 0.691 | 0.663 | - | 660/375/295 | 500 | 500 | 0 | 0 | 3261 | - | - | 37.1 | 49.7 |
-| gliner25 | gliner-community/gliner_small-v2.5@f227d3c | open | 0.80 | 0.690 | 0.762 | 0.724 | - | 728/327/227 | 500 | 500 | 0 | 0 | 2360 | - | - | 24.8 | 34.6 |
-| gliner-bi | knowledgator/gliner-bi-small-v2.0@3d74c1b | open | 0.50 | 0.746 | 0.725 | 0.735 | - | 692/235/263 | 500 | 500 | 0 | 0 | 1120 | - | - | 16.8 | 23.9 |
-| gliner-bi-cached | knowledgator/gliner-bi-small-v2.0@3d74c1b | open | 0.50 | 0.746 | 0.725 | 0.735 | - | 692/235/263 | 500 | 500 | 0 | 0 | 1245 | 120 | - | 12.1 | 17.9 |
-| gliner-multi | urchade/gliner_multi-v2.1@443d26d | open | 0.80 | 0.668 | 0.677 | 0.673 | - | 647/321/308 | 500 | 500 | 0 | 0 | 5641 | - | - | 39.5 | 52.3 |
-| gliner2 | fastino/gliner2.5-base-v1@54785d5 | open | 0.95 | 0.699 | 0.685 | 0.692 | - | 654/282/301 | 500 | 500 | 0 | 0 | 2429 | - | - | 35.2 | 45.5 |
+| gliner | urchade/gliner_medium-v2.1@40ec419 | open | 0.70 | 0.638 | 0.691 | 0.663 | 0.629-0.694 | 660/375/295 | 500 | 500 | 0 | 0 | 3443 | - | - | 37.1 | 49.4 |
+| gliner25 | gliner-community/gliner_small-v2.5@f227d3c | open | 0.80 | 0.690 | 0.762 | 0.724 | 0.695-0.753 | 728/327/227 | 500 | 500 | 0 | 0 | 2357 | - | - | 25.1 | 34.6 |
+| gliner-bi | knowledgator/gliner-bi-small-v2.0@3d74c1b | open | 0.50 | 0.746 | 0.725 | 0.735 | 0.703-0.766 | 692/235/263 | 500 | 500 | 0 | 0 | 1124 | - | - | 16.9 | 23.2 |
+| gliner-bi-cached | knowledgator/gliner-bi-small-v2.0@3d74c1b | open | 0.50 | 0.746 | 0.725 | 0.735 | 0.703-0.766 | 692/235/263 | 500 | 500 | 0 | 0 | 1229 | 122 | - | 12.3 | 19.2 |
+| gliner-multi | urchade/gliner_multi-v2.1@443d26d | open | 0.80 | 0.668 | 0.677 | 0.673 | 0.639-0.703 | 647/321/308 | 500 | 500 | 0 | 0 | 5860 | - | - | 39.8 | 51.9 |
+| gliner2 | fastino/gliner2.5-base-v1@54785d5 | open | 0.95 | 0.699 | 0.685 | 0.692 | 0.661-0.721 | 654/282/301 | 500 | 500 | 0 | 0 | 2435 | - | - | 35.4 | 44.8 |
 
 | Per-label F1 | person | organization | location |
 | --- | --- | --- | --- |
@@ -60,19 +61,19 @@ models first selected the top value; see
 skipped with `--exclude`, so the slice is test rows 0-2000 without row 207.
 
 Data: DFKI-SLT/few-nerd@205f3e9 split=test; 2000 documents; labels: person, organization, location
-Run: Apple M4, 10 logical CPUs, torch threads 4, device cpu, batch 1, 1 warmup, 1 repeats; git 18c9b92 (dirty)
+Run: Apple M4, 10 logical CPUs, torch threads 4, device cpu, batch 1, 1 warmup, 1 repeats; git a85ffa3
 Thresholds: from artifacts/thresholds-validation-500.json, chosen on DFKI-SLT/few-nerd split=validation
 
 | Model | Checkpoint | Labels | Threshold | P | R | F1 | F1 95% CI | TP/FP/FN | Attempted | Scored | Failed | Missing | Load ms | Label cache ms | First call ms | p50 ms | p95 ms |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| rules | - | fixed | - | 0.167 | 0.001 | 0.003 | 0.001-0.005 | 5/25/3774 | 2000 | 2000 | 0 | 0 | 0 | - | 0.2 | 0.0 | 0.0 |
-| encoder | dslim/bert-base-NER@d1a3e8f | fixed | - | 0.635 | 0.747 | 0.687 | 0.666-0.705 | 2823/1621/956 | 2000 | 2000 | 0 | 0 | 1740 | - | 470.6 | 16.9 | 23.7 |
-| gliner | urchade/gliner_medium-v2.1@40ec419 | open | 0.70 | 0.613 | 0.665 | 0.638 | 0.618-0.659 | 2513/1584/1266 | 2000 | 2000 | 0 | 0 | 3514 | - | 56.2 | 37.0 | 48.0 |
-| gliner25 | gliner-community/gliner_small-v2.5@f227d3c | open | 0.80 | 0.656 | 0.740 | 0.695 | 0.677-0.713 | 2795/1464/984 | 2000 | 2000 | 0 | 0 | 2429 | - | 30.9 | 24.5 | 32.8 |
-| gliner-bi | knowledgator/gliner-bi-small-v2.0@3d74c1b | open | 0.50 | 0.729 | 0.675 | 0.701 | 0.681-0.719 | 2551/949/1228 | 2000 | 2000 | 0 | 0 | 1158 | - | 20.3 | 16.3 | 22.9 |
-| gliner-bi-cached | knowledgator/gliner-bi-small-v2.0@3d74c1b | open | 0.50 | 0.729 | 0.675 | 0.701 | 0.681-0.719 | 2551/949/1228 | 2000 | 2000 | 0 | 0 | 1255 | 120 | 15.8 | 11.9 | 16.8 |
-| gliner-multi | urchade/gliner_multi-v2.1@443d26d | open | 0.80 | 0.641 | 0.636 | 0.639 | 0.618-0.660 | 2403/1344/1376 | 2000 | 2000 | 0 | 0 | 6718 | - | 43.0 | 39.7 | 50.7 |
-| gliner2 | fastino/gliner2.5-base-v1@54785d5 | open | 0.95 | 0.687 | 0.649 | 0.668 | 0.651-0.686 | 2454/1117/1325 | 2000 | 2000 | 0 | 0 | 3011 | - | 42.3 | 35.0 | 44.3 |
+| rules | - | fixed | - | 0.167 | 0.001 | 0.003 | 0.001-0.005 | 5/25/3774 | 2000 | 2000 | 0 | 0 | 0 | - | 0.1 | 0.0 | 0.0 |
+| encoder | dslim/bert-base-NER@d1a3e8f | fixed | - | 0.635 | 0.747 | 0.687 | 0.666-0.705 | 2823/1621/956 | 2000 | 2000 | 0 | 0 | 1571 | - | 475.9 | 16.7 | 22.0 |
+| gliner | urchade/gliner_medium-v2.1@40ec419 | open | 0.70 | 0.613 | 0.665 | 0.638 | 0.618-0.659 | 2513/1584/1266 | 2000 | 2000 | 0 | 0 | 3692 | - | 57.2 | 37.1 | 47.9 |
+| gliner25 | gliner-community/gliner_small-v2.5@f227d3c | open | 0.80 | 0.656 | 0.740 | 0.695 | 0.677-0.713 | 2795/1464/984 | 2000 | 2000 | 0 | 0 | 2425 | - | 30.6 | 24.8 | 33.0 |
+| gliner-bi | knowledgator/gliner-bi-small-v2.0@3d74c1b | open | 0.50 | 0.729 | 0.675 | 0.701 | 0.681-0.719 | 2551/949/1228 | 2000 | 2000 | 0 | 0 | 1134 | - | 20.3 | 16.3 | 21.9 |
+| gliner-bi-cached | knowledgator/gliner-bi-small-v2.0@3d74c1b | open | 0.50 | 0.729 | 0.675 | 0.701 | 0.681-0.719 | 2551/949/1228 | 2000 | 2000 | 0 | 0 | 1280 | 121 | 15.4 | 11.9 | 17.1 |
+| gliner-multi | urchade/gliner_multi-v2.1@443d26d | open | 0.80 | 0.641 | 0.636 | 0.639 | 0.618-0.660 | 2403/1344/1376 | 2000 | 2000 | 0 | 0 | 6270 | - | 43.4 | 39.7 | 50.8 |
+| gliner2 | fastino/gliner2.5-base-v1@54785d5 | open | 0.95 | 0.687 | 0.649 | 0.668 | 0.651-0.686 | 2454/1117/1325 | 2000 | 2000 | 0 | 0 | 2939 | - | 42.8 | 35.1 | 44.5 |
 
 | Per-label F1 | person | organization | location |
 | --- | --- | --- | --- |
@@ -113,7 +114,7 @@ Same checkpoint, same predictions, three labels:
 
 | Measurement | Labels encoded per call | Labels cached |
 | --- | --- | --- |
-| 2,000-sentence run, p50 / p95 | 16.3 / 22.9 ms | 11.9 / 16.8 ms |
+| 2,000-sentence run, p50 / p95 | 16.3 / 21.9 ms | 11.9 / 17.1 ms |
 | One-time label encoding (`label_cache_ms`) | - | 120 ms |
 | Interleaved probe, 32 sentences x 5 repeats, `gliner` 0.2.28 | 16.1 ms | 16.1 ms |
 | Interleaved probe, 32 sentences x 5 repeats, `gliner` 0.2.29 | 16.0 ms | 11.6 ms |
@@ -131,19 +132,19 @@ The article's integration check: same 32 sentences (documents hash
 `60666d86...`), fixed threshold, three repeats.
 
 Data: DFKI-SLT/few-nerd@205f3e9 split=test; 32 documents; labels: person, organization, location
-Run: Apple M4, 10 logical CPUs, torch threads 4, device cpu, batch 1, 1 warmup, 3 repeats; git 18c9b92 (dirty)
+Run: Apple M4, 10 logical CPUs, torch threads 4, device cpu, batch 1, 1 warmup, 3 repeats; git a85ffa3
 Thresholds: fixed 0.5
 
 | Model | Checkpoint | Labels | Threshold | P | R | F1 | F1 95% CI | TP/FP/FN | Attempted | Scored | Failed | Missing | Load ms | Label cache ms | First call ms | p50 ms | p95 ms |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | rules | - | fixed | - | 0.000 | 0.000 | 0.000 | 0.000-0.000 | 0/0/54 | 32 | 32 | 0 | 0 | 0 | - | 0.1 | 0.0 | 0.0 |
-| encoder | dslim/bert-base-NER@d1a3e8f | fixed | - | 0.600 | 0.778 | 0.677 | 0.551-0.780 | 42/28/12 | 32 | 32 | 0 | 0 | 1763 | - | 282.8 | 17.1 | 22.2 |
-| gliner | urchade/gliner_medium-v2.1@40ec419 | open | 0.50 | 0.506 | 0.722 | 0.595 | 0.439-0.722 | 39/38/15 | 32 | 32 | 0 | 0 | 3455 | - | 57.3 | 36.8 | 48.2 |
-| gliner25 | gliner-community/gliner_small-v2.5@f227d3c | open | 0.50 | 0.557 | 0.815 | 0.662 | 0.512-0.772 | 44/35/10 | 32 | 32 | 0 | 0 | 2427 | - | 29.6 | 24.6 | 33.8 |
-| gliner-bi | knowledgator/gliner-bi-small-v2.0@3d74c1b | open | 0.50 | 0.622 | 0.519 | 0.566 | 0.429-0.707 | 28/17/26 | 32 | 32 | 0 | 0 | 1172 | - | 22.2 | 16.1 | 21.2 |
-| gliner-bi-cached | knowledgator/gliner-bi-small-v2.0@3d74c1b | open | 0.50 | 0.622 | 0.519 | 0.566 | 0.429-0.707 | 28/17/26 | 32 | 32 | 0 | 0 | 1251 | 121 | 15.5 | 12.1 | 20.0 |
-| gliner-multi | urchade/gliner_multi-v2.1@443d26d | open | 0.50 | 0.564 | 0.815 | 0.667 | 0.545-0.768 | 44/34/10 | 32 | 32 | 0 | 0 | 6595 | - | 43.2 | 38.2 | 50.9 |
-| gliner2 | fastino/gliner2.5-base-v1@54785d5 | open | 0.50 | 0.484 | 0.815 | 0.607 | 0.463-0.731 | 44/47/10 | 32 | 32 | 0 | 0 | 2987 | - | 42.9 | 34.8 | 44.2 |
+| encoder | dslim/bert-base-NER@d1a3e8f | fixed | - | 0.600 | 0.778 | 0.677 | 0.551-0.780 | 42/28/12 | 32 | 32 | 0 | 0 | 1321 | - | 37.1 | 16.3 | 20.9 |
+| gliner | urchade/gliner_medium-v2.1@40ec419 | open | 0.50 | 0.506 | 0.722 | 0.595 | 0.439-0.722 | 39/38/15 | 32 | 32 | 0 | 0 | 3654 | - | 57.5 | 36.9 | 48.3 |
+| gliner25 | gliner-community/gliner_small-v2.5@f227d3c | open | 0.50 | 0.557 | 0.815 | 0.662 | 0.512-0.772 | 44/35/10 | 32 | 32 | 0 | 0 | 2418 | - | 30.8 | 24.5 | 34.3 |
+| gliner-bi | knowledgator/gliner-bi-small-v2.0@3d74c1b | open | 0.50 | 0.622 | 0.519 | 0.566 | 0.429-0.707 | 28/17/26 | 32 | 32 | 0 | 0 | 1167 | - | 20.2 | 16.1 | 21.1 |
+| gliner-bi-cached | knowledgator/gliner-bi-small-v2.0@3d74c1b | open | 0.50 | 0.622 | 0.519 | 0.566 | 0.429-0.707 | 28/17/26 | 32 | 32 | 0 | 0 | 1285 | 121 | 15.2 | 11.8 | 19.7 |
+| gliner-multi | urchade/gliner_multi-v2.1@443d26d | open | 0.50 | 0.564 | 0.815 | 0.667 | 0.545-0.768 | 44/34/10 | 32 | 32 | 0 | 0 | 6592 | - | 43.5 | 39.3 | 49.8 |
+| gliner2 | fastino/gliner2.5-base-v1@54785d5 | open | 0.50 | 0.484 | 0.815 | 0.607 | 0.463-0.731 | 44/47/10 | 32 | 32 | 0 | 0 | 3001 | - | 41.5 | 34.8 | 44.3 |
 
 | Per-label F1 | person | organization | location |
 | --- | --- | --- | --- |
@@ -181,9 +182,9 @@ The bi-encoder, multilingual, and GLiNER2.5 runs are new in 0.3.0.
 
 | Path | Package | p50 latency per repeat | TP/FP/FN | Micro P | Micro R |
 | --- | --- | --- | --- | --- | --- |
-| PyTorch | - | 37.2, 36.9, 37.4 ms | 39/38/15 | 0.506 | 0.722 |
-| ONNX FP32 | 790,362,476 B | 22.8, 20.9, 19.8 ms | 39/38/15 | 0.506 | 0.722 |
-| ONNX INT8 | 353,299,069 B | 16.0, 14.9, 15.9 ms | 39/41/15 | 0.487 | 0.722 |
+| PyTorch | - | 37.2, 37.0, 36.6 ms | 39/38/15 | 0.506 | 0.722 |
+| ONNX FP32 | 790,362,476 B | 23.4, 21.8, 21.7 ms | 39/38/15 | 0.506 | 0.722 |
+| ONNX INT8 | 353,299,069 B | 16.8, 15.9, 15.7 ms | 39/41/15 | 0.487 | 0.722 |
 
 FP32 returned exactly the PyTorch spans. INT8 changed the spans in 4 of 32
 sentences and added 3 false positives, within the 0.02 recall budget. Package
@@ -211,7 +212,7 @@ umlaut text. Three sentences test the adapters, not multilingual accuracy.
 ## Streaming PII demo
 
 `python -m ner_demo.streaming` released
-`Contact ████████ at ████████████████████.` with a release delay of 403 ms,
+`Contact ████████ at ████████████████████.` with a release delay of 405 ms,
 which covers the whole input plus the final pass. The opt-in tests also passed
 whitespace-only chunks and the over-the-word-limit rejection with the real
 checkpoint. PII recall was not measured.

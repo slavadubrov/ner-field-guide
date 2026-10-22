@@ -107,6 +107,11 @@ Run on 2026-10-22 on an Apple M4 (10 logical CPUs, macOS 27.2), CPU only.
   sentences, identical predictions; on `gliner` 0.2.28 the two paths took the
   same time.
 
+- Every README command was then run verbatim in a fresh clone of the release
+  commit `a85ffa3`: offline example, cached quickstart, data import, sweep, both
+  comparisons, ONNX check, streaming demo, and both test suites. Counts,
+  selected thresholds, and intervals matched the earlier run exactly.
+
 Full tables: [docs/results.md](docs/results.md).
 
 ### Known limitations
